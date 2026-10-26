@@ -1,0 +1,1982 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Small Hours</title>
+<meta name="description" content="A sleep tracker for a phone lying on the mattress. Movement and sound in, one honest score out. Everything stays on your device.">
+<meta name="theme-color" content="#0A0D14">
+<meta name="color-scheme" content="dark light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Small Hours">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* ============================================================================
+   SMALL HOURS — tokens
+   Dark-committed by design: this app is operated in a dark bedroom at 2am and
+   again at 7am. The night palette is the :root default; light is the override.
+   ========================================================================== */
+:root {
+  --bg:          #0A0D14;   /* near-black, blue-biased */
+  --bg-deep:     #000000;   /* tracking screen only — emits nothing on OLED */
+  --surface:     #151B27;
+  --surface-2:   #1D2534;
+  --ink:         #C6CEDC;   /* never pure white; too hot in a dark room */
+  --ink-strong:  #E4E9F1;
+  --dim:         #5F6B7E;
+  --line:        #232C3C;
+
+  --dawn:        #E8A15C;   /* sunrise amber — the accent */
+  --dawn-soft:   #3A2A1B;
+  --dawn-ink:    #1A1206;
+  --deep:        #6E7DE0;   /* indigo — deep sleep. The one saturated note. */
+  --deep-soft:   #1E2440;
+
+  --good:        #4FA97C;
+  --warn:        #C9873F;
+  --bad:         #B4574A;
+
+  --shadow:      0 1px 2px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.45);
+  --display:     "Fraunces", Georgia, "Times New Roman", serif;
+  --body:        "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono:        "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --r:           14px;
+  --pad:         20px;
+  color-scheme:  dark;
+}
+
+/* Light — for a 7am wake-up on a phone set to light mode. A pale dawn ground. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:        #F4F1EC;
+    --bg-deep:   #000000;
+    --surface:   #FFFFFF;
+    --surface-2: #EBE7E0;
+    --ink:       #1B2029;
+    --ink-strong:#0C1017;
+    --dim:       #6B7280;
+    --line:      #DCD6CC;
+    --dawn:      #A8641F;
+    --dawn-soft: #F7E7D4;
+    --dawn-ink:  #FFFFFF;
+    --deep:      #3F4BAE;
+    --deep-soft: #E1E3F6;
+    --good:      #2F7A56;
+    --warn:      #8A5A18;
+    --bad:       #97382C;
+    --shadow:    0 1px 2px rgba(20,24,32,.06), 0 8px 24px rgba(20,24,32,.08);
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg:        #F4F1EC;
+  --bg-deep:   #000000;
+  --surface:   #FFFFFF;
+  --surface-2: #EBE7E0;
+  --ink:       #1B2029;
+  --ink-strong:#0C1017;
+  --dim:       #6B7280;
+  --line:      #DCD6CC;
+  --dawn:      #A8641F;
+  --dawn-soft: #F7E7D4;
+  --dawn-ink:  #FFFFFF;
+  --deep:      #3F4BAE;
+  --deep-soft: #E1E3F6;
+  --good:      #2F7A56;
+  --warn:      #8A5A18;
+  --bad:       #97382C;
+  --shadow:    0 1px 2px rgba(20,24,32,.06), 0 8px 24px rgba(20,24,32,.08);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { -webkit-text-size-adjust: 100%; height: 100%; }
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.5;
+  overscroll-behavior: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+
+/* --- app shell ----------------------------------------------------------- */
+#app {
+  max-width: 560px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: max(env(safe-area-inset-top), 14px) var(--pad) max(env(safe-area-inset-bottom), 18px);
+  gap: 22px;
+}
+.screen { display: none; flex-direction: column; gap: 22px; flex: 1; }
+.screen.on { display: flex; }
+
+/* --- type ---------------------------------------------------------------- */
+h1, h2, h3 { margin: 0; font-family: var(--display); font-weight: 400; text-wrap: balance; color: var(--ink-strong); }
+h1 { font-size: 30px; line-height: 1.15; font-variation-settings: "opsz" 48, "SOFT" 20; }
+h2 { font-size: 21px; line-height: 1.2; font-variation-settings: "opsz" 32, "SOFT" 20; }
+h3 { font-size: 16px; font-family: var(--body); font-weight: 600; letter-spacing: .01em; }
+p  { margin: 0; }
+.lede { color: var(--dim); font-size: 15px; max-width: 46ch; }
+.eyebrow {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
+}
+.num { font-variant-numeric: tabular-nums; font-family: var(--mono); }
+
+/* --- controls ------------------------------------------------------------ */
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 54px; padding: 14px 20px;
+  border-radius: var(--r);
+  background: var(--surface-2); color: var(--ink-strong);
+  border: 1px solid var(--line);
+  font-weight: 500; font-size: 16px;
+  transition: transform .12s ease, background .15s ease;
+}
+.btn:active { transform: scale(.985); }
+.btn.primary { background: var(--dawn); color: var(--dawn-ink); border-color: transparent; font-weight: 600; }
+.btn.quiet   { background: none; border-color: var(--line); color: var(--dim); min-height: 46px; font-size: 15px; }
+.btn.wide    { width: 100%; }
+.btn.huge    { min-height: 88px; font-size: 19px; border-radius: 18px; }
+:focus-visible { outline: 2px solid var(--dawn); outline-offset: 3px; border-radius: 6px; }
+
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; min-width: 0; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.spacer { flex: 1; min-height: 8px; }
+
+/* --- surfaces: spent by role, not stamped on everything ------------------ */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 18px;
+}
+.hair { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+/* --- the score ----------------------------------------------------------- */
+.score-wrap { display: flex; align-items: baseline; gap: 14px; }
+.score {
+  font-family: var(--display);
+  font-variation-settings: "opsz" 144, "SOFT" 0, "WONK" 1;
+  font-weight: 300;
+  font-size: clamp(96px, 34vw, 148px);
+  line-height: .82;
+  letter-spacing: -.03em;
+  color: var(--dawn);
+  font-variant-numeric: tabular-nums;
+}
+.score-of { font-family: var(--mono); font-size: 14px; color: var(--dim); }
+.verdict { font-family: var(--display); font-size: 24px; font-variation-settings: "opsz" 36; color: var(--ink-strong); }
+
+/* component bars */
+.comp { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: baseline; }
+.comp + .comp { margin-top: 14px; }
+.comp-name { font-size: 14px; color: var(--ink); }
+.comp-val  { font-family: var(--mono); font-size: 13px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.comp-track { grid-column: 1 / -1; display: block; height: 7px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.comp-fill  { display: block; height: 100%; border-radius: 4px; background: var(--dawn); }
+.comp-fill.low { background: var(--bad); }
+.comp-fill.mid { background: var(--warn); }
+.comp-fill.high{ background: var(--good); }
+
+/* --- hypnogram ----------------------------------------------------------- */
+.hypno { width: 100%; display: block; border-radius: 10px; background: var(--surface); }
+.hypno-legend { display: flex; gap: 14px; flex-wrap: wrap; font-family: var(--mono); font-size: 11px; color: var(--dim); }
+.hypno-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: baseline; }
+
+/* --- tracking screen: the darkest thing we can draw ---------------------- */
+#s-tracking { background: var(--bg-deep); color: #2A3040; }
+body.tracking { background: var(--bg-deep); }
+.night-mark {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #1E2432; margin: 0 auto;
+  animation: breathe 5.5s ease-in-out infinite;
+}
+@keyframes breathe { 0%,100% { opacity:.28; transform:scale(1);} 50% { opacity:.85; transform:scale(1.6);} }
+.night-clock { font-family: var(--mono); font-size: 15px; color: #333B4D; text-align: center; font-variant-numeric: tabular-nums; }
+#s-tracking .btn { background: none; border-color: #1A2030; color: #3A4356; }
+
+/* --- misc ---------------------------------------------------------------- */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
+  background: var(--surface-2); color: var(--dim); border: 1px solid var(--line);
+}
+.pill.ok   { color: var(--good); border-color: color-mix(in srgb, var(--good) 35%, transparent); }
+.pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+.pill.off  { color: var(--bad);  border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
+.caveat { font-size: 12.5px; color: var(--dim); line-height: 1.45; max-width: 52ch; }
+.scroll-x { overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- screens are injected by render() -->
+</div>
+
+<script>
+/* ============================================================================
+   SMALL HOURS
+   A sleep tracker for a phone lying on a mattress. Motion + sound in, a
+   hypnogram and one honest number out.
+
+   Engine modules below are deliberately pure and framework-free; the native
+   iOS build (ios/) is a line-for-line port of them:
+     Signal  — raw sensor stream  → per-epoch counts
+     Stager  — epochs             → hypnogram + night metrics
+     Scorer  — metrics + baseline → 0-100 score with components
+     Alarm   — wake window + Web Audio synthesis
+   ========================================================================== */
+
+const APP = 'smallhours';
+const EPOCH_MS = 30000;          // 30s epochs — the actigraphy standard
+
+/* --- storage -------------------------------------------------------------
+   localStorage only, on this device, under keys prefixed "smallhours:".
+   Nothing is ever sent anywhere. Export/Import (the "Your data" screen) is the
+   way to move nights between devices. */
+const Store = {
+  _lk(path) { return `${APP}:${path}`; },
+  async init() { return 'local'; },
+  async get(path) {
+    try { const v = localStorage.getItem(this._lk(path)); return v ? JSON.parse(v) : null; }
+    catch (_) { return null; }
+  },
+  async set(path, data) {
+    try { localStorage.setItem(this._lk(path), JSON.stringify(data)); return true; }
+    catch (e) { console.warn('could not save', path, e); return false; }
+  },
+  async remove(path) { try { localStorage.removeItem(this._lk(path)); } catch (_) {} },
+  async recent(col, n) {
+    const out = [];
+    try {
+      const pre = `${APP}:${col}/`;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(pre)) {
+          try { out.push({ id: k.slice(pre.length), ...JSON.parse(localStorage.getItem(k)) }); } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    return out.sort((a, b) => (b.wakeAt || 0) - (a.wakeAt || 0)).slice(0, n);
+  },
+  /* every key this app owns — used by "Delete everything" */
+  keys() {
+    const ks = [];
+    try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(`${APP}:`)) ks.push(k); } } catch (_) {}
+    return ks;
+  },
+};
+
+/* --- time helpers --------------------------------------------------------- */
+const pad2 = n => String(n).padStart(2, '0');
+const hhmm = ts => { const d = new Date(ts); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+const dur  = ms => { const m = Math.max(0, Math.round(ms / 60000)); return `${Math.floor(m / 60)}h ${pad2(m % 60)}m`; };
+const durShort = ms => { const m = Math.max(0, Math.round(ms / 60000)); const h = Math.floor(m / 60); return h ? `${h}h ${m % 60}m` : `${m}m`; };
+/* A night belongs to the date you WOKE on. Waking at 03:30 still belongs to
+   that morning, so no rollover trickery is needed beyond using the wake time. */
+const dayKey = ts => { const d = new Date(ts); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp  = (a, b, t) => a + (b - a) * t;
+/* piecewise-linear scoring curve: pts = [[x, y], ...] ascending in x, y in 0..1 */
+function curve(pts, x) {
+  if (x <= pts[0][0]) return pts[0][1];
+  for (let i = 1; i < pts.length; i++) {
+    if (x <= pts[i][0]) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+      return x1 === x0 ? y1 : lerp(y0, y1, (x - x0) / (x1 - x0));
+    }
+  }
+  return pts[pts.length - 1][1];
+}
+
+</script>
+<script>
+/* ============================================================================
+   SIGNAL — raw sensors → per-epoch counts
+   The phone lies on the mattress. Body movement reaches it as vibration through
+   the mattress, so what we measure is bed motion, not wrist motion. We never
+   keep a raw sample: motion collapses to one count per 30s epoch, and audio
+   collapses to dB aggregates. No audio is ever buffered or stored.
+   ========================================================================== */
+const Signal = {
+  motionOK: false, audioOK: false, wakeOK: false,
+  _epochs: [], _cur: null, _t0: 0,
+  _accBuf: [], _lastMag: null, _hp: 0,
+  _ac: null, _analyser: null, _stream: null, _freq: null, _time: null,
+  _rafId: null, _tickId: null, _wakeLock: null,
+  onEpoch: null,
+
+  /* --- capability probing: run this from a tap, it is the setup screen ---- */
+  async probeMotion() {
+    if (typeof DeviceMotionEvent === 'undefined') return { ok: false, why: 'This browser has no motion sensor API.' };
+    try {
+      if (typeof DeviceMotionEvent.requestPermission === 'function') {
+        const res = await DeviceMotionEvent.requestPermission();
+        if (res !== 'granted') return { ok: false, why: 'Motion access was not granted. Either it was declined, or this device has no motion sensor (most laptops and desktops do not).' };
+      }
+    } catch (e) {
+      /* iOS throws here when the request does not come straight from a tap, or
+         when the page is not served over HTTPS. */
+      return { ok: false, why: window.isSecureContext ? 'Motion access could not be requested. Tap "Check again" to retry.' : 'Motion needs the page served over HTTPS.' };
+    }
+    /* Permission is not proof of delivery — a device with no accelerometer (most
+       laptops), or a browser that blocks it, never fires a single event. Listen for real. */
+    const got = await new Promise(resolve => {
+      let n = 0;
+      const h = ev => { if (ev && (ev.accelerationIncludingGravity || ev.acceleration)) n++; };
+      window.addEventListener('devicemotion', h);
+      setTimeout(() => { window.removeEventListener('devicemotion', h); resolve(n); }, 1200);
+    });
+    if (got < 3) return { ok: false, why: 'No movement readings arrived. Most laptops and desktops have no motion sensor; on a phone, open this page in the browser itself over HTTPS.' };
+    this.motionOK = true;
+    return { ok: true, rate: Math.round(got / 1.2) };
+  },
+
+  async probeAudio() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return { ok: false, why: 'No microphone API here.' };
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
+      stream.getTracks().forEach(t => t.stop());
+      this.audioOK = true;
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, why: e && e.name === 'NotAllowedError' ? 'Microphone access was declined.' : 'The microphone could not be opened' + (window.isSecureContext ? '.' : ' — it needs the page served over HTTPS.') };
+    }
+  },
+
+  async probeWakeLock() {
+    if (!('wakeLock' in navigator)) return { ok: false, why: 'This browser cannot keep the screen awake. Set Auto-Lock to Never instead.' };
+    try {
+      const wl = await navigator.wakeLock.request('screen');
+      await wl.release();
+      this.wakeOK = true;
+      return { ok: true };
+    } catch (e) { return { ok: false, why: 'Screen wake lock was refused. Set Auto-Lock to Never instead.' }; }
+  },
+
+  /* --- bedtime: re-arm sensors from the "Start the night" tap ----------------
+     The check result is remembered in settings, but the permission is not:
+     iOS Safari wants DeviceMotionEvent.requestPermission() again on every page
+     load, and it only answers when called straight from a tap. Call this FIRST
+     in the tap handler, before anything else awaits. Once granted it resolves
+     at once, with no second prompt. */
+  prepare(sensors) {
+    const s = sensors || {};
+    this.audioOK = !!(s.audio && s.audio.ok && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    this.motionOK = false;
+    if (!(s.motion && s.motion.ok) || typeof DeviceMotionEvent === 'undefined') return Promise.resolve(false);
+    if (typeof DeviceMotionEvent.requestPermission !== 'function') { this.motionOK = true; return Promise.resolve(true); }
+    let p;
+    try { p = DeviceMotionEvent.requestPermission(); } catch (_) { return Promise.resolve(false); }
+    return Promise.resolve(p).then(r => (this.motionOK = r === 'granted'), () => false);
+  },
+
+  /* --- wake lock, re-acquired every time the tab comes back -------------- */
+  async _holdWake() {
+    if (!('wakeLock' in navigator)) return;
+    try { this._wakeLock = await navigator.wakeLock.request('screen'); }
+    catch (_) { this._wakeLock = null; }
+  },
+  _wakeHandler() { if (document.visibilityState === 'visible') Signal._holdWake(); },
+
+  /* --- motion --------------------------------------------------------------
+     Per sample: magnitude of the acceleration vector, high-pass filtered to
+     strip gravity, rectified. Per epoch: the sum of that (an area-under-curve
+     activity count, the mode research actigraphs use) plus the peak. */
+  _onMotion(ev) {
+    const a = ev.accelerationIncludingGravity || ev.acceleration;
+    if (!a || a.x == null) return;
+    const mag = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+    if (this._lastMag === null) { this._lastMag = mag; return; }
+    /* one-pole high pass: removes the 1g constant and any slow tilt drift */
+    this._hp = 0.92 * (this._hp + mag - this._lastMag);
+    this._lastMag = mag;
+    const v = Math.abs(this._hp);
+    if (!this._cur) return;
+    this._cur.mSum += v;
+    this._cur.mPeak = Math.max(this._cur.mPeak, v);
+    this._cur.mN++;
+  },
+
+  /* --- audio ---------------------------------------------------------------
+     One analyser frame every 250ms. We take RMS in dBFS and a band energy in
+     the 60-500Hz region where snoring lives. Nothing is retained. */
+  _sampleAudio() {
+    if (!this._analyser || !this._cur) return;
+    /* Float, never the Byte variants: getByteTimeDomainData quantises to 8 bits,
+       putting the usable noise floor near -48 dBFS — above a quiet bedroom — so
+       a whole night would flatten to a constant. */
+    this._analyser.getFloatTimeDomainData(this._time);
+    let sum = 0, pk = 0;
+    for (let i = 0; i < this._time.length; i++) { const d = this._time[i]; sum += d * d; if (Math.abs(d) > pk) pk = Math.abs(d); }
+    const rms = Math.sqrt(sum / this._time.length);
+    const db = 20 * Math.log10(Math.max(rms, 1e-7));       // true dBFS, ~-140..0
+    this._analyser.getFloatFrequencyData(this._freq);      // dB per bin, not 0-255
+    const nyq = this._ac.sampleRate / 2, bins = this._freq.length;
+    const lo = Math.floor(60 / nyq * bins), hi = Math.ceil(500 / nyq * bins);
+    let bandDb = -140, cnt = 0, acc = 0;
+    for (let i = lo; i < hi && i < bins; i++) { const v = this._freq[i]; if (isFinite(v)) { acc += v; cnt++; } }
+    bandDb = cnt ? acc / cnt : -140;
+    /* map dB back onto the 0-255 scale the staging thresholds are written against */
+    const band = clamp((bandDb + 100) / 70 * 255, 0, 255);
+    const peakDb = 20 * Math.log10(Math.max(pk, 1e-7));
+    this._cur.aSum += db;
+    this._cur.aPeak = Math.max(this._cur.aPeak, peakDb);
+    this._cur.aBand = Math.max(this._cur.aBand, band);
+    this._cur.aN++;
+  },
+
+  _newEpoch(t) { return { t, mSum: 0, mPeak: 0, mN: 0, aSum: 0, aPeak: -140, aBand: 0, aN: 0 }; },
+
+  _closeEpoch() {
+    if (!this._cur) return;
+    const c = this._cur;
+    const e = {
+      t: c.t,
+      m: c.mN ? +(c.mSum / c.mN * 1000).toFixed(2) : null,   // mean rectified motion, scaled
+      mp: c.mN ? +(c.mPeak * 1000).toFixed(2) : null,        // peak within the epoch
+      a: c.aN ? Math.round(c.aSum / c.aN) : null,            // mean dBFS
+      ap: c.aN ? Math.round(c.aPeak) : null,                 // peak dBFS
+      ab: c.aN ? Math.round(c.aBand) : null,                 // 60-500Hz band energy 0..255
+    };
+    this._epochs.push(e);
+    if (this.onEpoch) { try { this.onEpoch(e, this._epochs); } catch (_) {} }
+  },
+
+  async start() {
+    this._epochs = []; this._lastMag = null; this._hp = 0;
+    this._t0 = Date.now();
+    this._cur = this._newEpoch(this._t0);
+
+    await this._holdWake();
+    document.addEventListener('visibilitychange', this._wakeHandler);
+
+    if (this.motionOK) {
+      this._boundMotion = this._onMotion.bind(this);
+      window.addEventListener('devicemotion', this._boundMotion);
+    }
+
+    if (this.audioOK) {
+      try {
+        this._stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        });
+        this._ac = Alarm.ctx();                       // share one context with the alarm
+        const src = this._ac.createMediaStreamSource(this._stream);
+        this._analyser = this._ac.createAnalyser();
+        this._analyser.fftSize = 2048;
+        this._analyser.smoothingTimeConstant = 0.4;
+        src.connect(this._analyser);                  // analyser only — never to destination
+        this._freq = new Float32Array(this._analyser.frequencyBinCount);
+        this._time = new Float32Array(this._analyser.fftSize);
+      } catch (e) { this.audioOK = false; }
+    }
+
+    /* Self-correcting clock: schedule against wall time so 8 hours of timer
+       throttling cannot accumulate drift. */
+    const tick = () => {
+      const now = Date.now();
+      if (this.audioOK) this._sampleAudio();
+      while (this._cur && now - this._cur.t >= EPOCH_MS) {
+        const nextT = this._cur.t + EPOCH_MS;
+        this._closeEpoch();
+        this._cur = this._newEpoch(nextT);
+      }
+      this._tickId = setTimeout(tick, 250);
+    };
+    this._tickId = setTimeout(tick, 250);
+    return true;
+  },
+
+  stop() {
+    if (this._cur && this._cur.mN + this._cur.aN > 0) this._closeEpoch();
+    this._cur = null;
+    clearTimeout(this._tickId); this._tickId = null;
+    if (this._boundMotion) window.removeEventListener('devicemotion', this._boundMotion);
+    document.removeEventListener('visibilitychange', this._wakeHandler);
+    if (this._wakeLock) { try { this._wakeLock.release(); } catch (_) {} this._wakeLock = null; }
+    if (this._stream) { this._stream.getTracks().forEach(t => t.stop()); this._stream = null; }
+    this._analyser = null;
+    return this._epochs;
+  },
+
+  /* The alarm owns the AudioContext and shares it with us. If it ever has to
+     rebuild that context, our source and analyser died with the old one — so
+     re-point them at the new context and let the night carry on. */
+  reattachAudio() {
+    if (!this.audioOK || !this._stream || !this._cur) return;
+    try {
+      this._ac = Alarm.ctx();
+      const src = this._ac.createMediaStreamSource(this._stream);
+      this._analyser = this._ac.createAnalyser();
+      this._analyser.fftSize = 2048;
+      this._analyser.smoothingTimeConstant = 0.4;
+      src.connect(this._analyser);                  // analyser only — never to destination
+      this._freq = new Float32Array(this._analyser.frequencyBinCount);
+      this._time = new Float32Array(this._analyser.fftSize);
+    } catch (_) { this._analyser = null; this.audioOK = false; }
+  },
+
+  /* Hand the audio session back to the OS. The alarm calls this before it
+     sounds, so playback is not stuck on the record route (earpiece, quiet). */
+  releaseMic() {
+    if (this._stream) { this._stream.getTracks().forEach(t => t.stop()); this._stream = null; }
+    this._analyser = null;
+    this.audioOK = false;
+  },
+
+  epochs() { return this._epochs; },
+};
+</script>
+<script>
+/* ============================================================================
+   ALARM — wake window logic + Web Audio synthesis
+   No sound files: every tone here is synthesised, so the page stays one
+   self-contained file and works offline.
+
+   Two iOS traps this is built around:
+   1. A live getUserMedia stream puts the audio session in a record category,
+      which can route playback to the earpiece at low volume. So the mic is
+      RELEASED before the alarm sounds.
+   2. Web Audio output is subject to the hardware silent switch. Routing the
+      graph through a MediaStreamDestination into an <audio> element puts it on
+      the media path, which behaves better. We do both: direct and routed.
+   Neither is a guarantee. The app tells the user to keep a normal iOS alarm as
+   a backstop, because a silent alarm is the one unforgivable bug.
+   ========================================================================== */
+/* WebKit has a third AudioContext state beyond 'running' and 'suspended':
+   'interrupted', entered when a call, Siri, an alarm or another app takes the
+   audio session. resume() does not reliably bring an interrupted context back,
+   so past this long we stop asking and rebuild the whole thing. */
+const ALARM_STALL_MS = 20000;
+
+const Alarm = {
+  _ac: null, _el: null, _dest: null, _keepAlive: null,
+  _timer: null, _ringing: false, _startedAt: 0, _seq: 0,
+  _stalledAt: 0, _lastResume: 0, _wakeBound: false,
+  target: null, windowMin: 30, armed: false, firedAt: null,
+  onFire: null, onTick: null,
+
+  ctx() {
+    if (!this._ac) {
+      const C = window.AudioContext || window.webkitAudioContext;
+      this._ac = new C();
+      const ac = this._ac;
+      ac.onstatechange = () => {
+        if (ac !== this._ac) return;          // an old context winding down
+        this._noteState();
+        if (ac.state !== 'running') this.recover();
+      };
+    }
+    return this._ac;
+  },
+
+  /* Must be called from a real tap at bedtime. Unlocks audio and proves it. */
+  async unlock() {
+    const ac = this.ctx();
+    /* resume() can stay pending forever when the browser does not count the
+       call as a user gesture. Never let that stop the night from starting:
+       recover() keeps retrying on every later wake event and tap. */
+    try {
+      if (ac.state !== 'running') await Promise.race([ac.resume(), new Promise(r => setTimeout(r, 1500))]);
+    } catch (_) {}
+
+    /* media-path routing, so the silent switch is less likely to kill it */
+    if (!this._dest) {
+      try {
+        this._dest = ac.createMediaStreamDestination();
+        this._el = document.createElement('audio');
+        this._el.srcObject = this._dest.stream;
+        this._el.loop = true;
+        this._el.setAttribute('playsinline', '');
+        this._el.volume = 1;
+        document.body.appendChild(this._el);
+        this._play();
+      } catch (_) { this._dest = null; }
+    }
+
+    /* A DC-free, inaudible tone keeps the audio path warm for eight hours. */
+    if (!this._keepAlive) {
+      try {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.frequency.value = 30; g.gain.value = 0.0001;
+        o.connect(g); g.connect(ac.destination);
+        if (this._dest) g.connect(this._dest);
+        o.start();
+        this._keepAlive = o;
+      } catch (_) {}
+    }
+
+    this._bindWake();
+    return ac.state === 'running';
+  },
+
+  /* --- surviving an interruption -------------------------------------------
+     unlock() runs again on every bedtime and every Test tap, so these bind
+     once. Any one of them may be the only signal that the audio session is
+     ours again; touchend is the last resort, and the only one that carries a
+     real gesture — which is what iOS wants before it will start a context. */
+  _bindWake() {
+    if (this._wakeBound) return;
+    this._wakeBound = true;
+    const go = () => this.recover();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') go();
+    });
+    window.addEventListener('pageshow', go);
+    window.addEventListener('focus', go);
+    document.addEventListener('touchend', go, { passive: true });
+  },
+
+  _noteState() {
+    if (!this._ac) return;
+    if (this._ac.state === 'running') this._stalledAt = 0;
+    else if (!this._stalledAt) this._stalledAt = Date.now();
+  },
+
+  /* Safe to call at any time, from anything. Cheap when all is well. */
+  recover() {
+    if (!this._ac) return;
+    if (this._ac.state === 'running') { this._stalledAt = 0; this._play(); return; }
+    this._noteState();
+    if (Date.now() - this._stalledAt > ALARM_STALL_MS) { this._rebuild(); return; }
+    const now = Date.now();
+    if (now - this._lastResume < 400) return;      // wake events arrive in clusters
+    this._lastResume = now;
+    /* Older WebKit returns undefined here rather than a promise, and a throw
+       inside a wake handler would take the rest of the recovery down with it.
+       Clear the stall clock off the promise too: statechange is the signal we
+       trust least, and a missed one would leave a stale clock that rebuilds a
+       perfectly healthy context on the next brief interruption. */
+    try {
+      const p = this._ac.resume();
+      if (p && p.then) p.then(() => this._noteState(), () => {});
+    } catch (_) {}
+    this._play();
+  },
+
+  /* play() is undefined on the same old WebKit, and unlock() must not treat a
+     throw from it as "the media path failed". */
+  _play() {
+    if (!this._el || !this._el.paused) return;
+    try { const p = this._el.play(); if (p && p.catch) p.catch(() => {}); } catch (_) {}
+  },
+
+  /* The context is not coming back. Throw it away and build a new one — the
+     media element, the keep-alive tone and Signal's analyser all hang off the
+     dead one, so they are rebuilt too. */
+  _rebuild() {
+    const old = this._ac, wasRinging = this._ringing;
+    const elapsed = (this.firedAt ? (Date.now() - this.firedAt) : 0) / 1000;
+    if (old) {
+      old.onstatechange = null;
+      try { const c = old.close(); if (c && c.catch) c.catch(() => {}); } catch (_) {}
+    }
+    this._ac = null; this._dest = null; this._keepAlive = null;
+    this._stalledAt = 0; this._lastResume = 0;
+    if (this._el) {
+      try { this._el.pause(); } catch (_) {}
+      try { this._el.remove(); } catch (_) {}
+      this._el = null;
+    }
+    this.unlock();                                 // rebuilds ctx, dest, element, keep-alive
+    try { Signal.reattachAudio(); } catch (_) {}
+    /* keep the escalation where it was — the new context's clock starts at 0 */
+    if (wasRinging) this._startedAt = this.ctx().currentTime - elapsed;
+  },
+
+  /* A short test chime, so bedtime proves the alarm can actually make noise. */
+  test() { this._chime(0.5, 0); return true; },
+
+  /* One warm bell: fundamental plus two harmonics, exponential decay. */
+  _chime(peak, when) {
+    const ac = this.ctx();
+    const t = ac.currentTime + (when || 0);
+    const bus = ac.createGain();
+    bus.gain.value = 1;
+    bus.connect(ac.destination);
+    if (this._dest) bus.connect(this._dest);
+    [[1, 1], [2.01, 0.32], [3.02, 0.14]].forEach(([mult, amp]) => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'sine';
+      o.frequency.value = 440 * mult;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak * amp), t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 2.4);
+      o.connect(g); g.connect(bus);
+      o.start(t); o.stop(t + 2.5);
+    });
+  },
+
+  /* Escalation: gentle at second 0, unignorable by second 90. */
+  _escalate() {
+    if (!this._ringing) return;
+    const ac = this.ctx();
+    const elapsed = (ac.currentTime - this._startedAt);
+    const ramp = clamp(elapsed / 90, 0, 1);
+    const peak = 0.04 + 0.66 * ramp * ramp;
+    this._chime(peak, 0);
+    if (ramp > 0.55) this._chime(peak * 0.7, 0.28);      // doubles up when it means it
+    const gap = lerp(5.5, 1.4, ramp);
+    this._seq++;
+    this._timer = setTimeout(() => this._escalate(), gap * 1000);
+    if (this.onTick) { try { this.onTick(elapsed, ramp); } catch (_) {} }
+  },
+
+  async fire() {
+    if (this._ringing) return;
+    this._ringing = true;
+    this.firedAt = Date.now();
+    /* Trap 1: hand the audio session back before making noise. */
+    try { Signal.releaseMic(); } catch (_) {}
+    const ac = this.ctx();
+    try { if (ac.state !== 'running') await ac.resume(); } catch (_) {}
+    /* Still not running: do not sit out the stall window. A silent alarm is
+       the one unforgivable bug, so rebuild here and now. */
+    if (this._ac.state !== 'running') this._rebuild();
+    this._play();
+    this._startedAt = this.ctx().currentTime;
+    this._seq = 0;
+    document.body.classList.add('ringing');
+    if (this.onFire) { try { this.onFire(); } catch (_) {} }
+    this._escalate();
+  },
+
+  silence() {
+    this._ringing = false;
+    clearTimeout(this._timer); this._timer = null;
+    document.body.classList.remove('ringing');
+  },
+
+  /* --- the wake window ------------------------------------------------------
+     Window is [target - windowMin, target]. Inside it we look for a rise out of
+     deep sleep: the current epoch's motion above the night's own light-sleep
+     threshold, or a sustained upward trend. If the whole window passes in deep
+     sleep, the deadline fires regardless. Never late. */
+  shouldFire(epochs, now) {
+    if (!this.armed || !this.target || this._ringing) return false;
+    if (now >= this.target) return true;                        // hard deadline
+    const open = this.target - this.windowMin * 60000;
+    if (now < open) return false;
+    if (!epochs || epochs.length < 20) return false;            // not enough night to judge
+
+    const recent = epochs.slice(-6).filter(e => e.m != null);
+    if (recent.length < 3) return false;
+
+    /* Night-relative thresholds: absolute values are meaningless because they
+       depend on the mattress, the phone, and where it was placed. */
+    const vals = epochs.map(e => e.m).filter(v => v != null).sort((a, b) => a - b);
+    if (vals.length < 20) return false;
+    const q = p => vals[clamp(Math.floor(p * (vals.length - 1)), 0, vals.length - 1)];
+    const floor = q(0.20), light = q(0.75);
+    const span = Math.max(light - floor, 1e-6);
+
+    const cur = recent.slice(-3).reduce((s, e) => s + e.m, 0) / 3;
+    const norm = (cur - floor) / span;
+    if (norm >= 0.85) return true;                              // clearly stirring
+
+    /* a sustained climb, even if it has not crossed yet */
+    const first = recent.slice(0, 3).reduce((s, e) => s + e.m, 0) / 3;
+    const rising = (cur - first) / span;
+    const frac = (now - open) / (this.windowMin * 60000);
+    if (rising > 0.3 && norm > 0.5 && frac > 0.25) return true;
+
+    /* late in the window, accept a weaker signal rather than lose the chance */
+    if (frac > 0.75 && norm >= 0.6) return true;
+    return false;
+  },
+};
+</script>
+<script>
+/* ============================================================================
+   STAGER — epochs → hypnogram + night metrics
+
+   Honest framing: a phone on a mattress cannot see brain waves. It sees
+   movement and sound. So this does NOT claim REM. It produces a continuous
+   sleep-depth curve and four states a movement signal can actually support:
+   Awake · Restless · Light · Deep.
+
+   Method:
+   1. normalise motion against THIS night's own distribution (the absolute
+      numbers depend on the mattress, the phone and where it was put)
+   2. sleep/wake with a Cole-Kripke-shaped weighted window, night-adaptive
+      threshold
+   3. Webster rescoring rules to stop brief stillness reading as sleep
+   4. a smoothed depth curve, tilted by the time-of-night prior that deep sleep
+      front-loads
+   ========================================================================== */
+const Stager = {
+  W: [404, 598, 326, 441, 1408, 508, 350],   // Cole-Kripke shape: -4..+2, centre-heavy
+  OFFSET: 4,
+
+  analyze(epochs, startAt, endAt) {
+    const n = epochs.length;
+    const out = {
+      ok: false, reason: null,
+      startAt, endAt, inBedMs: Math.max(0, endAt - startAt),
+      epochs: n, coverage: 0,
+      states: [], depth: [],
+      asleepMs: 0, latencyMs: null, wasoMs: 0, awakenings: 0,
+      efficiency: 0, deepMs: 0, lightMs: 0, restlessMs: 0, awakeMs: 0,
+      deepShare: 0, midSleep: null, onsetAt: null, finalWakeAt: null,
+      snoreMinutes: 0, noiseMean: null, hadAudio: false, hadMotion: false,
+    };
+    if (n < 20) { out.reason = 'The night was too short to read — under ten minutes of data.'; return out; }
+
+    const mRaw = epochs.map(e => (e.m == null ? null : e.m));
+    const have = mRaw.filter(v => v != null).length;
+    out.coverage = have / n;
+    out.hadMotion = have > n * 0.4;
+
+    if (!out.hadMotion) {
+      /* No usable motion. The night still has a start, an end and whatever the
+         morning check-in adds — the scorer handles that path. */
+      /* Unknowable without movement: efficiency, latency, WASO, depth. They go
+         null so the scorer drops them rather than awarding free marks. Sleep
+         time is an ESTIMATE from time in bed at a typical efficiency. */
+      out.reason = 'No movement data — scored from your times only.';
+      return this._fromTimes(out);
+    }
+
+    /* --- 1. fill short gaps, then normalise against the night itself ------- */
+    const m = mRaw.slice(); const invalid = new Array(n).fill(false);
+    const MAX_FILL = 6;                     // 3 minutes; past that it is a hole, not a gap
+    for (let i = 0; i < n; i++) {
+      if (m[i] != null) continue;
+      let a = i - 1; while (a >= 0 && mRaw[a] == null) a--;
+      let b = i + 1; while (b < n && mRaw[b] == null) b++;
+      if (b - a - 1 > MAX_FILL || a < 0 || b >= n) { invalid[i] = true; m[i] = null; continue; }
+      m[i] = (mRaw[a] + mRaw[b]) / 2;
+    }
+    /* A hole is not stillness. Carry the night's median through it so it scores
+       as ordinary, and count it against coverage rather than crediting it. */
+    const known = m.filter(v => v != null).sort((x, y) => x - y);
+    const med = known.length ? known[Math.floor(known.length / 2)] : 0;
+    for (let i = 0; i < n; i++) if (m[i] == null) m[i] = med;
+    out.gapMinutes = Math.round(invalid.filter(Boolean).length * EPOCH_MS / 60000);
+    out.coverage = Math.min(out.coverage, 1 - invalid.filter(Boolean).length / n);
+    const sorted = m.slice().sort((x, y) => x - y);
+    const q = p => sorted[clamp(Math.round(p * (sorted.length - 1)), 0, sorted.length - 1)];
+    const floor = q(0.15), top = Math.max(q(0.95), q(0.15) + 1e-6);
+    const span = Math.max(top - floor, 1e-6);
+    /* If floor and top are indistinguishable the phone never registered a body. */
+    if (top / Math.max(floor, 1e-9) < 1.15 && top < 0.5) {
+      /* The sensor ran but nothing reached it: a phone on the nightstand.
+         Unreadable — a still phone looks exactly like perfect sleep. */
+      this._fromTimes(out);
+      out.ok = false;
+      out.reason = 'The phone did not pick up any movement. Was it on the bed? No score, because a still phone looks exactly like perfect sleep.';
+      return out;
+    }
+    /* 0 = perfectly still, ~1 = as active as this night got; clipped at 3 so a
+       single violent epoch cannot dominate the weighted window. */
+    const A = m.map(v => clamp((v - floor) / span, 0, 3));
+
+    /* --- 2. Cole-Kripke-shaped weighted window ---------------------------- */
+    const D = new Array(n).fill(0);
+    for (let i = 0; i < n; i++) {
+      let s = 0;
+      for (let k = 0; k < this.W.length; k++) {
+        const j = i + k - this.OFFSET;
+        s += this.W[k] * (j >= 0 && j < n ? A[j] : A[clamp(j, 0, n - 1)]);
+      }
+      D[i] = s / 4035;                      // sum of weights → back to ~A scale
+    }
+    /* Night-adaptive threshold. Wrist-actigraph coefficients assume a count
+       scale we do not have, so the cut sits between this night's quiet and
+       active modes rather than at a fixed constant. */
+    const Ds = D.slice().sort((a, b) => a - b);
+    const dq = p => Ds[clamp(Math.round(p * (Ds.length - 1)), 0, Ds.length - 1)];
+    const thr = Math.max(dq(0.55) * 1.9, dq(0.30) + 0.28 * (dq(0.92) - dq(0.30)));
+
+    let state = D.map(d => (d >= thr ? 'awake' : 'sleep'));
+
+    /* --- 3. Webster rescoring: stillness right after being awake is not sleep */
+    const EP_MIN = 2;                                   // epochs per minute (30s)
+    /* Each rule reads a SNAPSHOT and writes to a copy. Reading your own writes
+       makes every rescored epoch new wake-context for the next one, and the
+       cascade swallows the whole night. */
+    const rescore = (wakeMin, sleepMin) => {
+      const src = state.slice(), out2 = state.slice();
+      let run = 0;
+      for (let i = 0; i < n; i++) {
+        if (src[i] === 'awake') { run++; continue; }
+        if (run >= wakeMin * EP_MIN) {
+          for (let k = 0; k < sleepMin * EP_MIN && i + k < n; k++) if (src[i + k] === 'sleep') out2[i + k] = 'awake';
+        }
+        run = 0;
+      }
+      state = out2;
+    };
+    rescore(4, 1); rescore(10, 3); rescore(15, 4);
+    /* short sleep islands inside long wake are wake */
+    const killIsland = (maxSleepMin, needWakeMin) => {
+      const src = state.slice(), out2 = state.slice();
+      let i = 0;
+      while (i < n) {
+        if (src[i] !== 'sleep') { i++; continue; }
+        let j = i; while (j < n && src[j] === 'sleep') j++;
+        if (j - i <= maxSleepMin * EP_MIN) {
+          let before = 0, k = i - 1; while (k >= 0 && src[k] === 'awake') { before++; k--; }
+          let after = 0, k2 = j; while (k2 < n && src[k2] === 'awake') { after++; k2++; }
+          if (before >= needWakeMin * EP_MIN && after >= needWakeMin * EP_MIN) for (let x = i; x < j; x++) out2[x] = 'awake';
+        }
+        i = j;
+      }
+      state = out2;
+    };
+    killIsland(6, 10); killIsland(10, 20);
+
+    /* --- 4. depth curve: smoothed, inverted activity, tilted by night phase - */
+    const smooth = (arr, half) => arr.map((_, i) => {
+      let s = 0, w = 0;
+      for (let j = -half; j <= half; j++) {
+        const k = i + j; if (k < 0 || k >= n) continue;
+        const g = Math.exp(-(j * j) / (2 * (half / 2) * (half / 2) || 1));
+        s += arr[k] * g; w += g;
+      }
+      return w ? s / w : arr[i];
+    });
+    /* A is normalised across the WHOLE night, so wake-vs-sleep uses up all the
+       range and every sleeping epoch looks equally still. Depth needs its own
+       normalisation, taken from the sleeping epochs only. */
+    const sleepVals = [];
+    for (let i = 0; i < n; i++) if (state[i] === 'sleep') sleepVals.push(m[i]);
+    sleepVals.sort((x, y) => x - y);
+    const sq = p => sleepVals[clamp(Math.round(p * (sleepVals.length - 1)), 0, sleepVals.length - 1)];
+    const sFloor = sleepVals.length > 20 ? sq(0.06) : floor;
+    const sTop = sleepVals.length > 20 ? Math.max(sq(0.94), sFloor + 1e-6) : top;
+    const sSpan = Math.max(sTop - sFloor, 1e-6);
+    const As = m.map(v => clamp((v - sFloor) / sSpan, 0, 1));
+    const quiet = smooth(As.map(v => 1 - v), 9);              // ~4.5 min either side
+    const depth = quiet.map((v, i) => {
+      if (state[i] === 'awake') return 0;
+      /* Deep sleep front-loads: the same stillness early in the night is more
+         likely to be deep than the same stillness at 6am. A gentle prior only. */
+      const frac = i / Math.max(1, n - 1);
+      const prior = 1.15 - 0.35 * frac;
+      return clamp(v * prior, 0, 1);
+    });
+
+    /* --- states + metrics -------------------------------------------------- */
+    const states = state.map((s, i) => {
+      if (s === 'awake') return 'awake';
+      const d = depth[i];
+      /* Three bands, not four, and none of them named after a clinical stage.
+         Movement cannot separate REM from N3 (kappa 0.084, Walch 2019), so
+         naming them "deep" or "REM" would be inventing precision. */
+      if (d >= 0.62) return 'settled';
+      return 'restless';
+    });
+
+    const tOf = i => (epochs[i] && epochs[i].t) || (startAt + i * EPOCH_MS);
+    let onset = -1;
+    for (let i = 0; i + 9 < n; i++) {
+      let all = true;
+      for (let k = 0; k < 10; k++) if (states[i + k] === 'awake') { all = false; break; }
+      if (all) { onset = i; break; }
+    }
+    let finalWake = n - 1;
+    for (let i = n - 1; i >= 0; i--) if (states[i] !== 'awake') { finalWake = i; break; }
+
+    let asleep = 0, waso = 0, deepN = 0, lightN = 0, restN = 0, awakeN = 0, bouts = 0, inBout = false;
+    for (let i = 0; i < n; i++) {
+      const s = states[i];
+      if (s === 'awake') {
+        awakeN++;
+        if (onset >= 0 && i > onset && i < finalWake) { waso++; if (!inBout) { bouts++; inBout = true; } }
+      } else {
+        inBout = false; asleep++;
+        if (s === 'settled') deepN++; else restN++;
+      }
+    }
+
+    /* Movement bursts prove the phone is mechanically coupled to the bed. A
+       decoupled phone produces a beautiful, entirely fictional night — the most
+       damaging failure this app has, because it flatters. */
+    let bursts = 0, inBurst = false;
+    const burstThr = floor + 0.35 * span;
+    for (let i = 0; i < n; i++) {
+      if (m[i] > burstThr) { if (!inBurst) { bursts++; inBurst = true; } }
+      else inBurst = false;
+    }
+    out.bursts = bursts;
+    const hoursIn = out.inBedMs / 3600000;
+    /* Deliberately conservative. There is no reliable way to tell "well-coupled
+       phone, very still sleeper" from "phone under a pillow", so this only
+       refuses the nights where essentially nothing happened at all. The real
+       protection is the placement step at bedtime, not this. */
+    if (hoursIn >= 4 && bursts < 3) {
+      out.ok = false;
+      out.reason = 'Almost no movement reached the phone all night. That usually means it was not on the mattress — a nightstand, or under a pillow. No score, because a still phone looks exactly like perfect sleep.';
+      return out;
+    }
+
+    out.ok = true;
+    out.states = states;
+    out.depth = depth.map(d => +d.toFixed(3));
+    out.onsetAt = onset >= 0 ? tOf(onset) : null;
+    out.finalWakeAt = tOf(finalWake);
+    out.latencyMs = onset >= 0 ? Math.max(0, tOf(onset) - startAt) : null;
+    out.asleepMs = asleep * EPOCH_MS;
+    out.wasoMs = waso * EPOCH_MS;
+    out.awakenings = bouts;
+    out.deepMs = deepN * EPOCH_MS;
+    out.lightMs = lightN * EPOCH_MS;
+    out.restlessMs = restN * EPOCH_MS;
+    out.awakeMs = awakeN * EPOCH_MS;
+    out.efficiency = out.inBedMs ? clamp(out.asleepMs / out.inBedMs, 0, 1) : 0;
+    out.deepShare = out.asleepMs ? out.deepMs / out.asleepMs : 0;
+    out.midSleep = onset >= 0 ? (tOf(onset) + tOf(finalWake)) / 2 : (startAt + endAt) / 2;
+
+    /* --- audio extras: never a stage input, just context ------------------- */
+    const ab = epochs.map(e => e.ab).filter(v => v != null);
+    const aa = epochs.map(e => e.a).filter(v => v != null);
+    if (aa.length > n * 0.4) {
+      out.hadAudio = true;
+      out.noiseMean = Math.round(aa.reduce((s, v) => s + v, 0) / aa.length);
+      const bs = ab.slice().sort((x, y) => x - y);
+      const bq = p => bs[clamp(Math.round(p * (bs.length - 1)), 0, bs.length - 1)];
+      /* Two conditions, because loud alone means a fan or a road. Snoring is
+         loud in the 60-500Hz band AND impulsive: it peaks on each breath and
+         drops between them, so peak sits well above the epoch mean. */
+      /* Anchor to the night's QUIET decile, not its middle: someone who snores
+         most of the night makes snoring the median, and a mid-anchored
+         threshold then sits above the very thing it is looking for. The real
+         discriminator is the peak-to-mean gap below, which is scale-free. */
+      const floorB = bq(0.10);
+      const snoreThr = floorB + Math.max(14, 0.35 * (bq(0.95) - floorB));
+      let snore = 0;
+      for (let i = 0; i < n; i++) {
+        const e = epochs[i];
+        if (!e || e.ab == null || e.ap == null || e.a == null) continue;
+        if (states[i] === 'awake') continue;
+        if (e.ab > snoreThr && (e.ap - e.a) > 11) snore++;
+      }
+      out.snoreMinutes = Math.round(snore * EPOCH_MS / 60000);
+    }
+    if (out.asleepMs < 45 * 60000) {
+      out.reason = 'Under 45 minutes of sleep was detected. Treating this night as unreadable.';
+      out.ok = false;
+    }
+    /* A nap is real sleep but it is not a night, and scoring it would drag the
+       personal baseline that judges every actual night. */
+    if (out.inBedMs < 180 * 60000) {
+      out.reason = `That was ${durShort(out.inBedMs)} in bed — logged as a nap, not scored as a night.`;
+      out.ok = false;
+    }
+    return out;
+  },
+
+  /* The sleep-log path, for a device with no motion data at all. Sleep time is
+     an ESTIMATE from time in bed at a typical efficiency; the scorer caps it at
+     78 and labels it. It counts as a night (ok) when it was long enough to be
+     one, so log mode produces the simpler score the setup screen promises. */
+  _fromTimes(out) {
+    out.estimated = true;
+    out.asleepMs = Math.round(out.inBedMs * 0.88);
+    out.efficiency = null; out.latencyMs = null; out.wasoMs = null;
+    out.awakenings = null; out.deepShare = null; out.deepMs = null;
+    out.midSleep = (out.startAt + out.endAt) / 2;
+    out.ok = out.inBedMs >= 180 * 60000;
+    if (!out.ok) out.reason = `That was ${durShort(out.inBedMs)} in bed — logged as a nap, not scored as a night.`;
+    return out;
+  },
+};
+</script>
+<script>
+/* ============================================================================
+   SCORER — night metrics + personal baseline → one number, and why
+
+   Six components, weights summing to 100. Every curve is piecewise-linear and
+   printed here so the number is arguable rather than magic.
+
+   The score stays OBJECTIVE — it comes from the sensors. How rested you felt is
+   shown NEXT TO it, never blended in, because the gap between the two is the
+   most interesting thing the app can show you.
+   ========================================================================== */
+const Scorer = {
+  H: 3600000, M: 60000,
+
+  COMPONENTS: [
+    {
+      key: 'duration', name: 'How long you slept', weight: 30,
+      lever: 'Going to bed 30 minutes earlier is the single biggest lever here.',
+      value: (a) => { const v = curve([[0,0],[3,.12],[4.5,.34],[5.5,.55],[6.5,.80],[7,.93],[7.5,1],[9,1],[9.75,.88],[11,.68],[13,.5]], a.asleepMs / 3600000); return a.estimated ? Math.min(v, 0.85) : v; },
+      show:  (a) => durShort(a.asleepMs) + (a.estimated ? ' (estimated)' : ''),
+    },
+    {
+      key: 'efficiency', name: 'Time asleep vs time in bed', weight: 18,
+      lever: 'Get into bed closer to when you actually fall asleep — lying awake in bed costs you here.',
+      value: (a) => a.efficiency == null ? null : curve([[.5,0],[.65,.22],[.75,.48],[.82,.72],[.88,.93],[.92,1],[1,1]], a.efficiency),
+      show:  (a) => a.efficiency == null ? '—' : Math.round(a.efficiency * 100) + '%',
+    },
+    {
+      key: 'continuity', name: 'Staying asleep', weight: 17,
+      lever: 'Wake-ups this many times usually track with alcohol, a warm room, or a late heavy meal.',
+      value: (a) => {
+        if (a.wasoMs == null || a.awakenings == null) return null;
+        const waso = a.wasoMs / 60000;
+        const base = curve([[0,1],[8,.96],[18,.84],[32,.66],[50,.45],[75,.25],[110,.08],[160,0]], waso);
+        const pen  = curve([[0,0],[2,0],[4,.06],[7,.15],[12,.28]], a.awakenings);
+        return clamp(base - pen, 0, 1);
+      },
+      show:  (a) => a.awakenings == null ? '—' : a.awakenings === 0 ? 'unbroken' : `${a.awakenings} wake-up${a.awakenings > 1 ? 's' : ''}, ${Math.round(a.wasoMs / 60000)}m`,
+    },
+    {
+      key: 'depth', name: 'How settled the sleep was', weight: 12,
+      lever: 'The stillest sleep front-loads the night, so an earlier bedtime buys more of it than a later lie-in does.',
+      value: (a) => a.deepShare == null ? null : curve([[0,.08],[.06,.32],[.11,.62],[.16,.90],[.20,1],[.27,1],[.34,.86],[.45,.62],[.6,.4]], a.deepShare),
+      show:  (a) => a.deepShare == null ? '—' : Math.round(a.deepShare * 100) + '% of the night still',
+    },
+    {
+      key: 'latency', name: 'Falling asleep', weight: 11,
+      lever: 'If it takes over 30 minutes most nights, the fix is usually a later bedtime, not an earlier one. Note this reads movement, so lying still and awake counts as asleep — if it felt longer than this says, trust yourself.',
+      value: (a) => a.latencyMs == null ? null
+        : curve([[0,.62],[4,.86],[8,1],[18,1],[26,.88],[38,.66],[52,.44],[70,.24],[95,.08]], a.latencyMs / 60000),
+      show:  (a) => a.latencyMs == null ? '—' : `${Math.round(a.latencyMs / 60000)} min`,
+    },
+    {
+      key: 'timing', name: 'Same hours as usual', weight: 12,
+      lever: 'Your body scores the clock, not just the hours. Keeping the middle of the night steady is worth more than any single long night.',
+      value: (a, base) => {
+        if (!base || base.nights < 3 || base.midMinutes == null || a.midSleep == null) return null;
+        const d = new Date(a.midSleep);
+        let mid = d.getHours() * 60 + d.getMinutes();
+        let diff = Math.abs(mid - base.midMinutes);
+        if (diff > 720) diff = 1440 - diff;            // wrap across midnight
+        return curve([[0,1],[20,.96],[40,.84],[65,.66],[95,.45],[130,.26],[180,.08],[240,0]], diff);
+      },
+      show:  (a, base) => {
+        if (!base || base.nights < 3 || a.midSleep == null) return 'learning';
+        const d = new Date(a.midSleep);
+        let mid = d.getHours() * 60 + d.getMinutes();
+        let diff = Math.abs(mid - base.midMinutes); if (diff > 720) diff = 1440 - diff;
+        return diff < 15 ? 'right on your usual' : `${Math.round(diff)} min off your usual`;
+      },
+    },
+  ],
+
+  BANDS: [
+    [86, 'A strong night',   'This is what your good nights look like.'],
+    [72, 'A solid night',    'Nothing to fix here.'],
+    [58, 'A patchy night',   'The sleep was there, it just kept breaking.'],
+    [44, 'A short night',    'Not a disaster. Tonight is the fix.'],
+    [0,  'A hard night',     'These happen. Nothing to make up for — just tonight, as normal.'],
+  ],
+
+  compute(a, base) {
+    /* Components that cannot be evaluated (no baseline yet, no latency) drop
+       out and their weight is redistributed, so night 1 still gets a real
+       number instead of a penalty for being night 1. */
+    const rows = [];
+    let available = 0;
+    for (const c of this.COMPONENTS) {
+      const v = c.value(a, base);
+      if (v == null || !isFinite(v)) { rows.push({ ...c, value: null, points: 0, lost: 0, skipped: true }); continue; }
+      rows.push({ ...c, value: clamp(v, 0, 1), skipped: false });
+      available += c.weight;
+    }
+    if (available <= 0) return { total: null, rows, confidence: 0, band: this.BANDS[4] };
+    const k = 100 / available;
+    let total = 0;
+    for (const r of rows) {
+      if (r.skipped) continue;
+      r.points = r.weight * k * r.value;
+      r.lost = r.weight * k * (1 - r.value);
+      total += r.points;
+    }
+    /* Without movement we know only how long you were in bed and when. That
+       cannot honestly produce a top score, so it is capped and labelled. */
+    if (a.estimated) total = Math.min(total, 78);
+    total = Math.round(clamp(total, 0, 100));
+
+    /* Confidence from data completeness — a half-read night must not present a
+       confident number. */
+    let conf = 1;
+    if (!a.hadMotion) conf *= 0.35;
+    else conf *= clamp(0.55 + 0.45 * a.coverage, 0, 1);
+    if (!a.hadAudio) conf *= 0.92;
+    if (a.inBedMs < 4 * this.H) conf *= 0.7;
+    if (rows.some(r => r.skipped)) conf *= 0.9;
+    conf = clamp(conf, 0.1, 1);
+
+    const band = this.BANDS.find(b => total >= b[0]) || this.BANDS[this.BANDS.length - 1];
+    const scored = rows.filter(r => !r.skipped).sort((x, y) => y.lost - x.lost);
+    const worst = scored[0] && scored[0].lost >= 4 ? scored[0] : null;
+    const best  = scored.slice().sort((x, y) => y.value - x.value)[0];
+
+    return {
+      total, rows, confidence: +conf.toFixed(2), band,
+      worst, best,
+      confLabel: conf >= 0.85 ? 'full read' : conf >= 0.6 ? 'partial read' : 'thin read',
+    };
+  },
+
+  /* epochs → { night analysis, breakdown, score }. The one path every saved
+     night goes through. An unreadable night gets score null — never a number. */
+  scoreNight(epochs, startAt, endAt, base) {
+    const a = Stager.analyze(epochs, startAt, endAt);
+    const res = this.compute(a, base);
+    return { a, res, score: a.ok ? res.total : null };
+  },
+
+  /* Rolling personal baseline. Timing regularity needs at least three nights,
+     so it stays out of the score until then rather than inventing a norm. */
+  baseline(nights) {
+    const usable = nights.filter(n => n && n.ok && n.asleepMs > 3 * this.H);
+    if (!usable.length) return { nights: 0, midMinutes: null, avgAsleepMs: null, avgScore: null };
+    let sx = 0, sy = 0;
+    for (const n of usable) {
+      if (n.midSleep == null) continue;
+      const d = new Date(n.midSleep);
+      const ang = ((d.getHours() * 60 + d.getMinutes()) / 1440) * Math.PI * 2;
+      sx += Math.cos(ang); sy += Math.sin(ang);              // circular mean — 23:50 and 00:10 average to midnight
+    }
+    let midMinutes = null;
+    if (sx || sy) { let ang = Math.atan2(sy, sx); if (ang < 0) ang += Math.PI * 2; midMinutes = Math.round(ang / (Math.PI * 2) * 1440); }
+    const withScore = usable.filter(n => typeof n.score === 'number');
+    return {
+      nights: usable.length,
+      midMinutes,
+      avgAsleepMs: usable.reduce((s, n) => s + n.asleepMs, 0) / usable.length,
+      avgScore: withScore.length ? Math.round(withScore.reduce((s, n) => s + n.score, 0) / withScore.length) : null,
+    };
+  },
+};
+</script>
+<script>
+/* ============================================================================
+   HYPNOGRAM — the night, drawn honestly.
+   A depth curve, not crisp stage blocks: the signal does not support hard
+   boundaries, so the drawing does not pretend to have them. Wake moments are
+   marked along the top in dawn amber; depth fills toward indigo.
+   ========================================================================== */
+function drawHypnogram(canvas, night) {
+  const cs = getComputedStyle(document.documentElement);
+  const tok = n => cs.getPropertyValue(n).trim();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const W = canvas.clientWidth || 320, H = 168;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.height = H + 'px';
+  const g = canvas.getContext('2d');
+  g.scale(dpr, dpr);
+  g.clearRect(0, 0, W, H);
+
+  const depth = night.depth || [], states = night.states || [];
+  const n = depth.length;
+  const padL = 4, padR = 4, padT = 20, padB = 22;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  if (!n) {
+    g.fillStyle = tok('--dim'); g.font = '12px ui-monospace, monospace'; g.textAlign = 'center';
+    g.fillText('no readable signal', W / 2, H / 2);
+    return;
+  }
+  const x = i => padL + (i / Math.max(1, n - 1)) * plotW;
+  /* Depth goes DOWN: awake at the top, settled sleep at the bottom, the way a
+     hypnogram is always drawn. Drawn the other way up, a deep trough reads as
+     a spike of activity — the exact opposite of what it means. */
+  const y = d => padT + d * plotH;
+
+  /* the band guides, at the thresholds the stages actually use */
+  g.strokeStyle = tok('--line'); g.lineWidth = 1;
+  g.font = '9px ui-monospace, monospace'; g.textAlign = 'left';
+  [[0.62, 'settled']].forEach(([d, label]) => {
+    g.beginPath(); g.moveTo(padL, y(d) + .5); g.lineTo(W - padR, y(d) + .5); g.stroke();
+    g.fillStyle = tok('--dim'); g.fillText(label, padL + 3, y(d) - 3);
+  });
+
+  /* the depth curve, filled from the wake line down into it */
+  const grad = g.createLinearGradient(0, padT, 0, padT + plotH);
+  grad.addColorStop(0, tok('--deep-soft'));
+  grad.addColorStop(1, tok('--deep'));
+  g.beginPath();
+  g.moveTo(x(0), padT);
+  for (let i = 0; i < n; i++) g.lineTo(x(i), y(depth[i]));
+  g.lineTo(x(n - 1), padT); g.closePath();
+  g.fillStyle = grad; g.globalAlpha = .6; g.fill(); g.globalAlpha = 1;
+
+  g.beginPath();
+  for (let i = 0; i < n; i++) (i ? g.lineTo(x(i), y(depth[i])) : g.moveTo(x(i), y(depth[i])));
+  g.strokeStyle = tok('--deep'); g.lineWidth = 1.5; g.lineJoin = 'round'; g.stroke();
+
+  /* wake marks along the top */
+  g.fillStyle = tok('--dawn');
+  for (let i = 0; i < n; i++) if (states[i] === 'awake') g.fillRect(x(i), 6, Math.max(1.2, plotW / n), 7);
+
+  /* hour ticks */
+  /* a saved night stores bedAt/wakeAt; a just-finished one has startAt/endAt */
+  const start = night.startAt != null ? night.startAt : night.bedAt, end = night.endAt != null ? night.endAt : night.wakeAt;
+  g.fillStyle = tok('--dim'); g.font = '10px ui-monospace, monospace'; g.textAlign = 'center';
+  const hours = Math.max(1, Math.round((end - start) / 3600000));
+  const step = hours > 9 ? 2 : 1;
+  for (let h = 0; h <= hours; h += step) {
+    const t = start + h * 3600000; if (t > end) break;
+    const px = padL + ((t - start) / Math.max(1, end - start)) * plotW;
+    g.fillRect(px, padT + plotH, 1, 4);
+    if (px > 12 && px < W - 12) g.fillText(hhmm(t), px, H - 6);
+  }
+}
+
+/* ============================================================================
+   APP — screens and state
+   ========================================================================== */
+const App = {
+  screen: 'boot',
+  settings: { alarmTime: '07:00', windowMin: 30, setupDone: false, sensors: null },
+  session: null,          // an in-progress night, checkpointed so a reload resumes it
+  night: null,            // the finished night being shown on the morning screen
+  history: [],
+  baseline: null,
+  _loop: null, _checkpoint: 0,
+
+  async boot() {
+    await Store.init();
+    const s = await Store.get('meta/settings');
+    if (s) this.settings = { ...this.settings, ...s };
+    this.history = await Store.recent('nights', 30);
+    this.baseline = Scorer.baseline(this.history);
+
+    /* resume an interrupted night: the tab reloaded, or the browser dropped it */
+    let live = null;
+    try { live = JSON.parse(localStorage.getItem(`${APP}:live`) || 'null'); } catch (_) {}
+    if (live && live.startAt && Date.now() - live.startAt < 20 * 3600000 && !live.ended) {
+      this.session = live;
+      this.go('resume');
+      return;
+    }
+    this.go(this.settings.setupDone ? 'home' : 'setup');
+  },
+
+  async save() { await Store.set('meta/settings', this.settings); },
+
+  go(screen) { this.screen = screen; this.render(); window.scrollTo(0, 0); },
+
+  /* --- night lifecycle --------------------------------------------------- */
+  async startNight() {
+    const [h, m] = (this.settings.alarmTime || '07:00').split(':').map(Number);
+    const now = new Date();
+    const target = new Date(now); target.setHours(h, m, 0, 0);
+    if (target.getTime() <= now.getTime() + 60000) target.setDate(target.getDate() + 1);
+
+    /* both start synchronously inside the tap, before the first await */
+    const sensing = Signal.prepare(this.settings.sensors);
+    await Alarm.unlock();
+    await sensing;
+    const canBeSmart = Signal.motionOK;
+    Alarm.target = target.getTime();
+    Alarm.windowMin = canBeSmart ? this.settings.windowMin : 0;
+    Alarm.armed = true;
+
+    await Signal.start();
+    this.session = { startAt: Date.now(), target: target.getTime(), windowMin: Alarm.windowMin, epochs: [], ended: false };
+    this._persistLive();
+
+    Signal.onEpoch = (e, all) => {
+      this.session.epochs = all;
+      if (Date.now() - this._checkpoint > 120000) { this._checkpoint = Date.now(); this._persistLive(); }
+      if (Alarm.shouldFire(all, Date.now())) this.fireAlarm();
+      const el = document.getElementById('nightClock');
+      if (el) el.textContent = `${hhmm(this.session.startAt)} — ${dur(Date.now() - this.session.startAt)}`;
+    };
+    /* independent deadline watchdog: even if no epoch lands, the alarm fires */
+    clearInterval(this._loop);
+    this._loop = setInterval(() => {
+      if (!this.session || this.session.ended) return;
+      Alarm.recover();          // backstop: a wake event can be missed overnight
+      if (Alarm.shouldFire(Signal.epochs(), Date.now())) this.fireAlarm();
+      const el = document.getElementById('nightClock');
+      if (el) el.textContent = `${hhmm(this.session.startAt)} — ${dur(Date.now() - this.session.startAt)}`;
+    }, 5000);
+
+    document.body.classList.add('tracking');
+    this.go('tracking');
+  },
+
+  _persistLive() {
+    try {
+      localStorage.setItem(`${APP}:live`, JSON.stringify({
+        startAt: this.session.startAt, target: this.session.target,
+        windowMin: this.session.windowMin, ended: this.session.ended,
+        epochs: this.session.epochs.slice(-1400),
+      }));
+    } catch (_) {}
+  },
+
+  fireAlarm() { if (this.screen === 'alarm') return; Alarm.fire(); this.go('alarm'); },
+
+  async endNight() {
+    Alarm.silence();
+    Alarm.armed = false;
+    clearInterval(this._loop); this._loop = null;
+    const epochs = Signal.stop();
+    document.body.classList.remove('tracking');
+    const startAt = this.session ? this.session.startAt : Date.now() - 3600000;
+    const endAt = Date.now();
+
+    const { a, res, score } = Scorer.scoreNight(epochs.length ? epochs : (this.session && this.session.epochs) || [], startAt, endAt, this.baseline);
+    const night = {
+      ...a, score, confidence: res.confidence,
+      wakeAt: endAt, bedAt: startAt,
+      rested: null,
+      rows: res.rows.map(r => ({ key: r.key, name: r.name, value: r.value, points: +(r.points || 0).toFixed(1), skipped: r.skipped })),
+    };
+    this.night = { ...night, _res: res };
+    try { localStorage.removeItem(`${APP}:live`); } catch (_) {}
+    this.session = null;
+
+    /* the night document: epochs are dropped, the depth curve is kept */
+    await Store.set(`nights/${dayKey(endAt)}`, {
+      ok: a.ok, reason: a.reason, score, confidence: res.confidence,
+      bedAt: startAt, wakeAt: endAt, inBedMs: a.inBedMs, asleepMs: a.asleepMs,
+      latencyMs: a.latencyMs, wasoMs: a.wasoMs, awakenings: a.awakenings, estimated: !!a.estimated,
+      efficiency: a.efficiency == null ? null : +a.efficiency.toFixed(3),
+      deepMs: a.deepMs, deepShare: a.deepShare == null ? null : +a.deepShare.toFixed(3),
+      midSleep: a.midSleep, coverage: +a.coverage.toFixed(2),
+      hadMotion: a.hadMotion, hadAudio: a.hadAudio, snoreMinutes: a.snoreMinutes,
+      depth: a.depth, states: a.states, rested: null,
+    });
+    this.history = await Store.recent('nights', 30);
+    this.baseline = Scorer.baseline(this.history);
+    this.go('morning');
+  },
+
+  async setRested(v) {
+    if (!this.night) return;
+    this.night.rested = v;
+    const key = dayKey(this.night.wakeAt);
+    const doc = await Store.get(`nights/${key}`);
+    if (doc) await Store.set(`nights/${key}`, { ...doc, rested: v });
+    this.render();
+  },
+
+  render() { /* defined below */ },
+};
+</script>
+<script>
+/* ============================================================================
+   SCREENS
+   Each screen shows one thing and one action. It is operated half asleep in a
+   dark room, so targets are large and there is never more than one decision.
+   ========================================================================== */
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const el = id => document.getElementById(id);
+
+function bandColor(v) { return v >= .8 ? 'high' : v >= .55 ? '' : v >= .35 ? 'mid' : 'low'; }
+
+App.render = function () {
+  const s = this.screen;
+  const app = el('app');
+  app.innerHTML = this['view_' + s] ? this['view_' + s]() : '<p class="lede">…</p>';
+  if (this['after_' + s]) this['after_' + s]();
+};
+
+/* --- setup: the sensor check IS the onboarding --------------------------- */
+App.view_setup = function () {
+  const r = this.settings.sensors;
+  const line = (name, res, note) => {
+    if (!res) return `<div class="comp"><span class="comp-name">${esc(name)}</span><span class="pill">not checked</span></div>`;
+    return `<div class="comp"><span class="comp-name">${esc(name)}</span>
+      <span class="pill ${res.ok ? 'ok' : 'off'}">${res.ok ? 'working' : 'unavailable'}</span>
+      ${res.ok ? (note ? `<span class="comp-val" style="grid-column:1/-1">${esc(note)}</span>` : '') : `<span class="comp-val" style="grid-column:1/-1">${esc(res.why || '')}</span>`}</div>`;
+  };
+  return `<div class="screen on">
+    <div>
+      <p class="eyebrow">First, one check</p>
+      <h1>Let's see what your phone will let this page do.</h1>
+    </div>
+    <p class="lede">A web page can only reach your sensors if the browser says yes, so allow motion and microphone access when asked. This takes about five seconds and tells us exactly what tonight will look like. Nothing is recorded during the check.</p>
+    <div class="panel stack" style="gap:16px">
+      ${line('Movement', r && r.motion, r && r.motion && r.motion.ok ? `about ${r.motion.rate} readings a second` : '')}
+      ${line('Sound', r && r.audio, 'levels only — audio is never saved')}
+      ${line('Screen stays awake', r && r.wake)}
+    </div>
+    ${r ? this._setupVerdict(r) : ''}
+    <div class="spacer"></div>
+    <button class="btn primary wide huge" id="btnProbe">${r ? 'Check again' : 'Run the check'}</button>
+    ${r ? `<button class="btn quiet wide" id="btnSetupDone">Continue</button>` : ''}
+    <p class="caveat">Movement is the one that matters most. If it is unavailable, the app still works — it scores your night from your times instead, and shows how you felt next to it.</p>
+  </div>`;
+};
+App._setupVerdict = function (r) {
+  const m = r.motion && r.motion.ok;
+  const a = r.audio && r.audio.ok;
+  let head, body, extra = '';
+  if (m && a)      { head = 'Everything works.'; body = 'The full thing: movement, sound, a night curve and a smart alarm that waits for a light moment.'; }
+  else if (m)      { head = 'Movement works.';   body = 'That is the one that matters. Without sound there is no snoring detection, and the night is read from movement alone.'; }
+  else {
+    head = 'Movement is not available here.';
+    body = 'Small Hours reads your night through the mattress, so it needs a phone with a motion sensor, the page open in the browser over HTTPS, and Motion access allowed. A laptop or desktop has no motion sensor, so this result is expected there.';
+    extra = `<p class="caveat" style="margin-top:12px">Without movement Small Hours runs as a <strong>sleep log and alarm</strong>: tap when you go to bed, tap when you wake, answer one question. It scores the night on length, on how steady your hours are, and shows how rested you felt next to it. That is a real score — just a simpler one, capped and labelled as an estimate.</p>
+    <p class="caveat" style="margin-top:10px">On an iPhone that said no by mistake: reload the page and tap "Check again" — Safari asks again on a new visit. If it stops asking, clear this site under Settings → Apps → Safari → Advanced → Website Data.</p>`;
+  }
+  return `<div class="panel" style="border-color:var(--dawn-soft)"><h3 style="margin-bottom:6px">${esc(head)}</h3><p class="caveat">${esc(body)}</p>${extra}</div>`;
+};
+App.after_setup = function () {
+  el('btnProbe').onclick = async () => {
+    el('btnProbe').textContent = 'Checking…';
+    const motion = await Signal.probeMotion();
+    const audio  = await Signal.probeAudio();
+    const wake   = await Signal.probeWakeLock();
+    this.settings.sensors = { motion, audio, wake };
+    await this.save();
+    this.render();
+  };
+  const d = el('btnSetupDone');
+  if (d) d.onclick = async () => { this.settings.setupDone = true; await this.save(); this.go('home'); };
+};
+
+/* --- home / bedtime ------------------------------------------------------ */
+App.view_home = function () {
+  const last = this.history[0];
+  const b = this.baseline || { nights: 0 };
+  const [h, m] = (this.settings.alarmTime || '07:00').split(':').map(Number);
+  const backstop = `${pad2((h + (m + 10 >= 60 ? 1 : 0)) % 24)}:${pad2((m + 10) % 60)}`;
+  const sens = this.settings.sensors || {};
+  const motionOK = !!(sens.motion && sens.motion.ok);
+  const wakeOK = !!(sens.wake && sens.wake.ok);
+
+  return `<div class="screen on">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">
+      <p class="eyebrow">Small Hours</p>
+      ${this.history.length ? `<button class="pill" id="btnHistory">${this.history.length} night${this.history.length > 1 ? 's' : ''} →</button>` : ''}
+    </div>
+
+    ${last ? `<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+      <div><p class="eyebrow" style="margin-bottom:4px">Last night</p>
+      <p style="font-size:15px">${last.score != null ? `<strong style="font-family:var(--display);font-size:22px;color:var(--dawn)">${last.score}</strong> · ${esc(durShort(last.asleepMs || 0))}` : 'unreadable'}</p></div>
+      <button class="btn quiet" id="btnLast" style="flex:0 0 auto">See it</button>
+    </div>` : `<div><h1>Put the phone on the mattress. That is the whole setup.</h1></div>`}
+
+    <div class="panel stack" style="gap:18px">
+      <div>
+        <label class="eyebrow" for="alarmTime">Wake me by</label>
+        <input type="time" id="alarmTime" value="${esc(this.settings.alarmTime)}"
+          style="width:100%;margin-top:8px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-strong);font-family:var(--mono);font-size:30px;padding:12px 14px;border-radius:12px;text-align:center">
+      </div>
+      <div${motionOK ? '' : ' hidden'}>
+        <label class="eyebrow" for="win">Wake window</label>
+        <select id="win" style="width:100%;margin-top:8px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-strong);font-family:var(--body);font-size:16px;padding:14px;border-radius:12px">
+          <option value="30"${this.settings.windowMin == 30 ? ' selected' : ''}>30 min before — wake me at a light moment</option>
+          <option value="20"${this.settings.windowMin == 20 ? ' selected' : ''}>20 min before</option>
+          <option value="45"${this.settings.windowMin == 45 ? ' selected' : ''}>45 min before</option>
+          <option value="0"${this.settings.windowMin == 0 ? ' selected' : ''}>Exactly on time — no smart wake</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="panel stack" style="gap:12px">
+      <p class="eyebrow">Before you put it down</p>
+      <ol style="margin:0;padding-left:20px;font-size:14.5px;line-height:1.6;color:var(--ink)">
+        <li>Plug the phone in.</li>
+        <li><strong>Ringer on, volume up.</strong> A web page cannot turn either one up for you — that is why the test button below exists.</li>
+        <li><strong>Settings → Display &amp; Brightness → Auto-Lock → Never.</strong> ${wakeOK ? 'Belt and braces.' : 'This one is required: this browser will not hold the screen awake for the page, and if the phone locks, the page stops and the alarm stops existing.'}</li>
+        <li>Set your phone's normal alarm for <strong class="num">${backstop}</strong> as a backstop. This is a web page. Treat it as the nice alarm, never the only one.</li>
+        ${motionOK ? '<li>Phone flat on the mattress, screen down, near your hip. Not on the nightstand — it has to feel you move.</li>' : '<li>Leave this page open and the phone face down. Anywhere is fine tonight; nothing is being sensed.</li>'}
+      </ol>
+      <button class="btn quiet" id="btnTest">Test the alarm sound</button>
+    </div>
+
+    ${!motionOK ? `<div class="panel" style="border-color:var(--dawn-soft)">
+      <p class="eyebrow" style="margin-bottom:6px">Running as a sleep log</p>
+      <p class="caveat">Movement is not available on this device or was not allowed, so tonight is scored on length and steadiness — not on a hypnogram — with how rested you feel shown next to it. The alarm rings at the time you set.</p>
+      <p class="caveat" style="margin-top:8px"><button class="pill" id="btnRecheck">Re-check sensors</button></p>
+    </div>` : ''}
+
+    <div class="spacer"></div>
+    <button class="btn primary wide huge" id="btnStart">Start the night</button>
+    <p style="text-align:center"><button class="pill" id="btnData">Your data · export / import</button></p>
+    ${b.nights >= 3 ? `<p class="caveat" style="text-align:center">Your usual middle-of-night is ${pad2(Math.floor(b.midMinutes / 60))}:${pad2(b.midMinutes % 60)} across ${b.nights} nights.</p>` : `<p class="caveat" style="text-align:center">After three nights this starts scoring how steady your hours are.</p>`}
+  </div>`;
+};
+App.after_home = function () {
+  el('alarmTime').onchange = async e => { this.settings.alarmTime = e.target.value; await this.save(); this.render(); };
+  const w = el('win');
+  if (w) w.onchange = async e => { this.settings.windowMin = +e.target.value; await this.save(); };
+  el('btnTest').onclick = async () => { await Alarm.unlock(); Alarm.test(); el('btnTest').textContent = 'Heard it? Then you are set.'; };
+  el('btnStart').onclick = () => this.startNight();
+  const hb = el('btnHistory'); if (hb) hb.onclick = () => this.go('history');
+  const lb = el('btnLast'); if (lb) lb.onclick = () => { this.night = this.history[0]; this.night._res = Scorer.compute(this.night, this.baseline); this.go('morning'); };
+  const rb = el('btnRecheck'); if (rb) rb.onclick = () => this.go('setup');
+  el('btnData').onclick = () => this.go('data');
+};
+
+/* --- resume an interrupted night ---------------------------------------- */
+App.view_resume = function () {
+  const s = this.session;
+  return `<div class="screen on">
+    <p class="eyebrow">Picking up where it stopped</p>
+    <h1>A night was still running.</h1>
+    <p class="lede">It started at <span class="num">${hhmm(s.startAt)}</span>, ${dur(Date.now() - s.startAt)} ago. The page reloaded, so sensing stopped — but the epochs up to that point were saved.</p>
+    <div class="spacer"></div>
+    <button class="btn primary wide huge" id="btnFinish">Finish it and score it</button>
+    <button class="btn quiet wide" id="btnDiscard">Throw it away</button>
+  </div>`;
+};
+App.after_resume = function () {
+  el('btnFinish').onclick = async () => {
+    Signal._epochs = (this.session.epochs || []);
+    await this.endNight();
+  };
+  el('btnDiscard').onclick = () => { try { localStorage.removeItem(`${APP}:live`); } catch (_) {} this.session = null; this.go('home'); };
+};
+
+/* --- tracking: the darkest screen we can draw ---------------------------- */
+App.view_tracking = function () {
+  const s = this.session;
+  const t = new Date(s.target);
+  return `<div class="screen on" id="s-tracking" style="justify-content:center;text-align:center;gap:34px">
+    <div class="night-mark"></div>
+    <div>
+      <p class="night-clock" id="nightClock">${hhmm(s.startAt)} — 0h 00m</p>
+      <p class="night-clock" style="margin-top:6px">${s.windowMin > 0 ? `waking you by ${pad2(t.getHours())}:${pad2(t.getMinutes())}, from ${s.windowMin} min before` : `alarm at ${pad2(t.getHours())}:${pad2(t.getMinutes())}`}</p>
+      <p class="night-clock" style="margin-top:6px;font-size:11px">${s.windowMin > 0 ? 'reading the bed' : 'logging times'}</p>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn wide" id="btnEnd" style="min-height:64px">I'm awake — end the night</button>
+    <p class="night-clock" style="font-size:11px">Leave this open. Screen down.</p>
+  </div>`;
+};
+App.after_tracking = function () {
+  let armed = false;
+  const b = el('btnEnd');
+  b.onclick = () => {
+    if (!armed) { armed = true; b.textContent = 'Tap again to confirm'; setTimeout(() => { armed = false; b.textContent = "I'm awake — end the night"; }, 4000); return; }
+    this.endNight();
+  };
+};
+
+/* --- alarm --------------------------------------------------------------- */
+App.view_alarm = function () {
+  return `<div class="screen on" style="justify-content:center;text-align:center;gap:28px">
+    <p class="eyebrow">${hhmm(Date.now())}</p>
+    <h1 style="font-size:38px">Good morning.</h1>
+    <p class="lede" style="margin:0 auto">Hold the button for two seconds. That is on purpose.</p>
+    <div class="spacer"></div>
+    <button class="btn primary wide huge" id="btnUp" style="min-height:104px">Hold to get up</button>
+    <button class="btn quiet wide" id="btnSnooze">Nine more minutes</button>
+  </div>`;
+};
+App.after_alarm = function () {
+  const b = el('btnUp');
+  let timer = null, held = 0;
+  const startHold = e => {
+    e.preventDefault();
+    held = Date.now();
+    b.textContent = 'Keep holding…';
+    timer = setTimeout(() => { b.textContent = 'Up.'; this.endNight(); }, 2000);
+  };
+  const endHold = () => { clearTimeout(timer); if (Date.now() - held < 2000) b.textContent = 'Hold to get up'; };
+  b.addEventListener('pointerdown', startHold);
+  b.addEventListener('pointerup', endHold);
+  b.addEventListener('pointercancel', endHold);
+  b.addEventListener('pointerleave', endHold);
+  el('btnSnooze').onclick = () => {
+    Alarm.silence();
+    Alarm.target = Date.now() + 9 * 60000;
+    Alarm.windowMin = 0; Alarm.armed = true;
+    this.go('tracking');
+  };
+};
+</script>
+<script>
+/* --- morning: the score, and why ---------------------------------------- */
+App.view_morning = function () {
+  const n = this.night;
+  if (!n) return `<div class="screen on"><p class="lede">No night to show.</p><button class="btn wide" id="btnHome2">Back</button></div>`;
+  const res = n._res || Scorer.compute(n, this.baseline);
+  const b = this.baseline || { nights: 0 };
+
+  if (!n.ok || res.total == null) {
+    return `<div class="screen on">
+      <p class="eyebrow">${esc(hhmm(n.bedAt))} → ${esc(hhmm(n.wakeAt))}</p>
+      <h1>I couldn't read that night.</h1>
+      <p class="lede">${esc(n.reason || 'The signal was not usable.')}</p>
+      <div class="panel"><p class="caveat">No score is better than a made-up one. The times are saved — ${esc(dur(n.inBedMs))} in bed. Nothing to make up for; tonight just runs as normal.</p></div>
+      <div class="spacer"></div>
+      <button class="btn primary wide" id="btnHome2">Back to tonight</button>
+    </div>`;
+  }
+
+  const delta = b.avgScore != null && this.history.length > 1 ? res.total - b.avgScore : null;
+  const rowsHtml = res.rows.filter(r => !r.skipped).map(r => `
+    <div class="comp">
+      <span class="comp-name">${esc(r.name)}</span>
+      <span class="comp-val">${esc(r.show ? r.show(n, b) : '')}</span>
+      <span class="comp-track"><span class="comp-fill ${bandColor(r.value)}" style="width:${Math.round(r.value * 100)}%"></span></span>
+    </div>`).join('');
+  const skipped = res.rows.filter(r => r.skipped);
+
+  return `<div class="screen on">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <p class="eyebrow">${esc(hhmm(n.bedAt))} → ${esc(hhmm(n.wakeAt))}</p>
+      <span class="pill ${res.confidence >= .85 ? 'ok' : res.confidence >= .6 ? 'warn' : 'off'}">${esc(res.confLabel)}</span>
+    </div>
+
+    <div>
+      <div class="score-wrap">
+        <span class="score">${res.total}</span>
+        <span class="score-of">out&nbsp;of&nbsp;100${delta != null ? `<br>${delta >= 0 ? '+' : ''}${delta} vs your average` : ''}</span>
+      </div>
+      <p class="verdict" style="margin-top:14px">${esc(res.band[1])}</p>
+      <p class="lede" style="margin-top:4px">${esc(res.band[2])}</p>
+    </div>
+
+    ${n.estimated || !(n.depth && n.depth.length) ? `<div class="panel"><p class="eyebrow" style="margin-bottom:6px">Sleep log</p><p class="caveat">No movement was read, so there is no night curve. This score comes from your times alone — ${esc(durShort(n.inBedMs))} in bed, sleep estimated — and is capped at 78.</p></div>` : `<div>
+      <canvas class="hypno" id="hypno"></canvas>
+      <div class="hypno-legend" style="margin-top:8px">
+        <span><i style="background:var(--dawn)"></i>awake</span>
+        <span><i style="background:var(--deep);opacity:.45"></i>restless</span>
+        <span><i style="background:var(--deep)"></i>settled</span>
+        <span style="margin-left:auto">${esc(durShort(n.asleepMs))} asleep of ${esc(durShort(n.inBedMs))}</span>
+      </div>
+    </div>`}
+
+    ${res.worst ? `<div class="panel" style="border-color:var(--dawn-soft)">
+      <p class="eyebrow" style="margin-bottom:6px">What cost you the most</p>
+      <h3 style="margin-bottom:6px">${esc(res.worst.name)} — ${Math.round(res.worst.lost)} points</h3>
+      <p class="caveat">${esc(res.worst.lever)}</p>
+    </div>` : `<div class="panel"><p class="caveat">Nothing stands out as the problem — the points are spread evenly. That is what a good night looks like.</p></div>`}
+
+    <div class="panel">${rowsHtml}
+    ${skipped.length ? `<p class="caveat" style="margin-top:16px">Not scored yet: ${esc(skipped.map(r => r.name.toLowerCase()).join(', '))}. ${skipped.some(r => r.key === 'timing') ? 'Steadiness needs three nights before it means anything.' : ''}</p>` : ''}
+    </div>
+
+    ${n.hadAudio && n.snoreMinutes >= 15 ? `<div class="panel"><p class="eyebrow" style="margin-bottom:6px">Sound</p><p class="caveat">Roughly ${n.snoreMinutes} minutes of steady low-frequency sound while you were asleep — that pattern is usually snoring. Worth knowing, not worth worrying about on its own.</p></div>` : ''}
+
+    <div class="panel">
+      <p class="eyebrow" style="margin-bottom:10px">How rested do you actually feel?</p>
+      <div class="row" id="restedRow">
+        ${[['1', 'Wrecked'], ['2', 'Meh'], ['3', 'Fine'], ['4', 'Great']].map(([v, l]) =>
+          `<button class="btn ${n.rested == v ? 'primary' : ''}" data-r="${v}" style="flex-direction:column;gap:2px;min-height:66px;font-size:13px;padding:14px 4px">${l}</button>`).join('')}
+      </div>
+      ${n.rested ? `<p class="caveat" style="margin-top:12px">${esc(this._restedNote(res.total, +n.rested))}</p>` : ''}
+    </div>
+
+    <p class="caveat">This is a phone on a mattress, not a sleep lab. It measures how still you were and how quiet the room was. It deliberately does not claim REM or deep sleep: movement alone cannot tell those apart, and apps that show them are drawing a textbook diagram, not your night. Read this for patterns across weeks, not for any single number.</p>
+    <div class="row" style="margin-top:4px">
+      <button class="btn quiet" id="btnHist2">All nights</button>
+      <button class="btn primary" id="btnHome2">Done</button>
+    </div>
+  </div>`;
+};
+App._restedNote = function (score, rested) {
+  const felt = rested * 25 - 12;             // 13 / 38 / 63 / 88
+  const gap = score - felt;
+  if (gap > 25) return 'The night measured better than it felt. When that keeps happening, the cause is usually something other than sleep — timing, light in the morning, or what happens in the first hour after waking.';
+  if (gap < -25) return 'You felt better than the night measured. Worth trusting your own read on this one.';
+  return 'That matches what the night measured.';
+};
+App.after_morning = function () {
+  const c = el('hypno');
+  if (c) { drawHypnogram(c, this.night); window.addEventListener('resize', () => drawHypnogram(c, this.night), { once: true }); }
+  const row = el('restedRow');
+  if (row) row.querySelectorAll('button').forEach(btn => { btn.onclick = () => this.setRested(btn.dataset.r); });
+  const h = el('btnHome2'); if (h) h.onclick = () => this.go('home');
+  const h2 = el('btnHist2'); if (h2) h2.onclick = () => this.go('history');
+};
+
+/* --- history ------------------------------------------------------------- */
+App.view_history = function () {
+  const hs = this.history.filter(n => n && n.wakeAt);
+  const b = this.baseline || { nights: 0 };
+  if (!hs.length) return `<div class="screen on"><h1>No nights yet.</h1><p class="lede">The first one lands here tomorrow morning.</p><div class="spacer"></div><button class="btn primary wide" id="btnBack">Back</button></div>`;
+
+  const scored = hs.filter(n => typeof n.score === 'number');
+  const max = 100;
+  const bars = hs.slice(0, 14).reverse().map(n => {
+    const h = typeof n.score === 'number' ? Math.max(4, (n.score / max) * 100) : 4;
+    const c = typeof n.score === 'number' ? (n.score >= 72 ? 'var(--good)' : n.score >= 58 ? 'var(--dawn)' : 'var(--bad)') : 'var(--line)';
+    return `<span title="${esc(n.id || '')}" style="flex:1;min-width:6px;height:${h}%;background:${c};border-radius:2px 2px 0 0;align-self:flex-end"></span>`;
+  }).join('');
+
+  return `<div class="screen on">
+    <p class="eyebrow">Small Hours</p>
+    <h1>${scored.length} scored night${scored.length === 1 ? '' : 's'}.</h1>
+    ${b.avgScore != null ? `<p class="lede">Your average is <strong style="color:var(--dawn)">${b.avgScore}</strong>, on ${esc(durShort(b.avgAsleepMs || 0))} of sleep a night.</p>` : ''}
+    <div class="panel">
+      <p class="eyebrow" style="margin-bottom:12px">Last ${Math.min(14, hs.length)} nights</p>
+      <div style="display:flex;gap:4px;height:88px;align-items:flex-end">${bars}</div>
+    </div>
+    <div class="stack">
+      ${hs.map(n => `<button class="panel" data-day="${esc(n.id || '')}" style="display:flex;justify-content:space-between;align-items:center;gap:14px;text-align:left;width:100%">
+        <span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--dim)">${esc(n.id || dayKey(n.wakeAt))}</span><br>
+          <span style="font-size:14px">${esc(hhmm(n.bedAt))} → ${esc(hhmm(n.wakeAt))} · ${esc(durShort(n.asleepMs || 0))}</span>
+        </span>
+        <span style="font-family:var(--display);font-size:26px;color:${typeof n.score === 'number' ? 'var(--dawn)' : 'var(--dim)'};font-variant-numeric:tabular-nums">${typeof n.score === 'number' ? n.score : '—'}</span>
+      </button>`).join('')}
+    </div>
+    <button class="btn quiet wide" id="btnData2">Export or import nights</button>
+    <button class="btn primary wide" id="btnBack" style="margin-top:4px">Back to tonight</button>
+  </div>`;
+};
+App.after_history = function () {
+  el('btnBack').onclick = () => this.go('home');
+  const d2 = el('btnData2'); if (d2) d2.onclick = () => this.go('data');
+  document.querySelectorAll('[data-day]').forEach(btn => {
+    btn.onclick = () => {
+      const n = this.history.find(x => (x.id || '') === btn.dataset.day);
+      if (!n) return;
+      this.night = { ...n, _res: Scorer.compute(n, this.baseline) };
+      this.go('morning');
+    };
+  });
+};
+
+/* ============================================================================
+   YOUR DATA — export, import, delete
+   Nights live in this browser's localStorage and nowhere else. Export writes
+   them to a JSON file you keep; Import reads that file on another device.
+   Nothing is uploaded: the file never leaves the device unless you move it.
+   ========================================================================== */
+const EXPORT_FORMAT = 'smallhours-nights';
+const NIGHT_ID = /^\d{4}-\d{2}-\d{2}(-\d{1,3})?$/;
+const STATES = new Set(['awake', 'restless', 'settled']);
+
+/* An imported file is untrusted input: keep only known fields of the right type. */
+function cleanNight(n) {
+  if (!n || typeof n !== 'object') return null;
+  const num = v => (typeof v === 'number' && isFinite(v) ? v : null);
+  const out = {
+    ok: n.ok === true, reason: typeof n.reason === 'string' ? n.reason.slice(0, 400) : null,
+    score: num(n.score) == null ? null : Math.round(clamp(n.score, 0, 100)),
+    confidence: num(n.confidence) == null ? 0 : clamp(n.confidence, 0, 1),
+    bedAt: num(n.bedAt), wakeAt: num(n.wakeAt), inBedMs: num(n.inBedMs), asleepMs: num(n.asleepMs) || 0,
+    latencyMs: num(n.latencyMs), wasoMs: num(n.wasoMs), awakenings: num(n.awakenings),
+    estimated: n.estimated === true, efficiency: num(n.efficiency), deepMs: num(n.deepMs),
+    deepShare: num(n.deepShare), midSleep: num(n.midSleep), coverage: num(n.coverage) || 0,
+    hadMotion: n.hadMotion === true, hadAudio: n.hadAudio === true, snoreMinutes: num(n.snoreMinutes) || 0,
+    depth: Array.isArray(n.depth) ? n.depth.slice(0, 4000).map(v => clamp(num(v) || 0, 0, 1)) : [],
+    states: Array.isArray(n.states) ? n.states.slice(0, 4000).map(v => (STATES.has(v) ? v : 'restless')) : [],
+    rested: ['1', '2', '3', '4', 1, 2, 3, 4].includes(n.rested) ? String(n.rested) : null,
+  };
+  if (out.wakeAt == null || out.bedAt == null || out.wakeAt < out.bedAt) return null;
+  if (out.inBedMs == null) out.inBedMs = out.wakeAt - out.bedAt;
+  return out;
+}
+
+const DataIO = {
+  async exportBlob() {
+    const all = await Store.recent('nights', Infinity);
+    const nights = {};
+    for (const n of all) { const { id, ...doc } = n; nights[id] = doc; }
+    const payload = { format: EXPORT_FORMAT, version: 1, exportedAt: new Date().toISOString(), count: all.length, nights };
+    return { blob: new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' }), count: all.length };
+  },
+  /* Merge, never overwrite: a night already on this device wins. */
+  async importText(text) {
+    let data;
+    try { data = JSON.parse(text); } catch (_) { throw new Error('That file is not valid JSON.'); }
+    if (!data || data.format !== EXPORT_FORMAT || typeof data.nights !== 'object' || !data.nights) {
+      throw new Error('That is not a Small Hours export file.');
+    }
+    let added = 0, kept = 0, bad = 0;
+    for (const [id, raw] of Object.entries(data.nights)) {
+      const night = NIGHT_ID.test(id) ? cleanNight(raw) : null;
+      if (!night) { bad++; continue; }
+      if (await Store.get(`nights/${id}`)) { kept++; continue; }
+      if (await Store.set(`nights/${id}`, night)) added++; else bad++;
+    }
+    return { added, kept, bad };
+  },
+};
+
+App.view_data = function () {
+  const msg = this._dataMsg;
+  return `<div class="screen on">
+    <div>
+      <p class="eyebrow">Your data</p>
+      <h1>Everything stays on this device.</h1>
+    </div>
+    <p class="lede">Nights are kept in this browser's storage and are never uploaded. To move them to another phone or browser, export a file here and import it there. Clearing this site's data in the browser deletes them — exporting now and then is the backup.</p>
+    ${msg ? `<div class="panel" role="status" id="dataMsg" style="border-color:var(--dawn-soft)"><p class="caveat">${esc(msg)}</p></div>` : ''}
+    <div class="panel stack">
+      <h3>Export</h3>
+      <p class="caveat">A JSON file with every saved night: times, the score and its parts, the night curve and how rested you said you felt. No audio — none is ever kept.</p>
+      <button class="btn wide" id="btnExport">Export nights (${this.history.length ? 'JSON' : 'nothing saved yet'})</button>
+    </div>
+    <div class="panel stack">
+      <h3>Import</h3>
+      <p class="caveat">Adds nights from a Small Hours export. A night already on this device is kept as it is.</p>
+      <label class="btn wide" for="fileImport" style="cursor:pointer">Choose a file…</label>
+      <input type="file" id="fileImport" accept="application/json,.json" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+    </div>
+    <div class="panel stack">
+      <h3>Delete</h3>
+      <p class="caveat">Removes every night and setting from this browser. Export first if you want to keep them.</p>
+      <button class="btn quiet wide" id="btnWipe">Delete everything</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn primary wide" id="btnBack">Back to tonight</button>
+  </div>`;
+};
+App.after_data = function () {
+  const say = m => { this._dataMsg = m; this.render(); };
+  this._dataMsg = null;
+  el('btnBack').onclick = () => this.go('home');
+  el('btnExport').onclick = async () => {
+    const { blob, count } = await DataIO.exportBlob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `small-hours-${dayKey(Date.now())}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    say(`Exported ${count} night${count === 1 ? '' : 's'}.`);
+  };
+  el('fileImport').onchange = async e => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    try {
+      const r = await DataIO.importText(await f.text());
+      this.history = await Store.recent('nights', 30);
+      this.baseline = Scorer.baseline(this.history);
+      say(`Imported ${r.added} night${r.added === 1 ? '' : 's'}.` + (r.kept ? ` ${r.kept} already here, kept as they were.` : '') + (r.bad ? ` ${r.bad} could not be read and were skipped.` : ''));
+    } catch (err) { say(err.message || 'Could not read that file.'); }
+  };
+  let armed = false;
+  el('btnWipe').onclick = () => {
+    const b = el('btnWipe');
+    if (!armed) { armed = true; b.textContent = 'Tap again to delete everything'; setTimeout(() => { armed = false; if (el('btnWipe')) el('btnWipe').textContent = 'Delete everything'; }, 4000); return; }
+    for (const k of Store.keys()) { try { localStorage.removeItem(k); } catch (_) {} }
+    this.history = []; this.baseline = Scorer.baseline([]);
+    this.settings = { alarmTime: '07:00', windowMin: 30, setupDone: false, sensors: null };
+    this.go('setup');
+  };
+};
+
+/* --- offline: cache the app shell (see sw.js). Never needed to work. ----- */
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(e => console.warn('service worker not registered', e));
+  });
+}
+
+App.boot();
+</script>
+</body>
+</html>
