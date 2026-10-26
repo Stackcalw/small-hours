@@ -2,7 +2,7 @@
    Bump VERSION whenever any file in SHELL changes; the old cache is dropped on
    activate. It never sees your data: nights live in localStorage, which a
    service worker cannot read, and nothing is ever sent anywhere. */
-const VERSION = 'small-hours-v1.0.0';
+const VERSION = 'small-hours-v1.0.1';
 const SHELL = [
   './',
   './index.html',
