@@ -327,6 +327,37 @@ body.tracking, body.tracking #app { background: var(--bg-deep); }
 .night-small { font-size: 13px; color: var(--night-ink); }
 #s-tracking .btn { background: none; border: 1px solid var(--night-low); color: var(--night-ink); min-height: 64px; font-weight: 500; }
 
+/* sound: the home check, the tracking line, the morning panel */
+.meter { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.meter > i { display: block; height: 100%; width: 100%; background: var(--dawn); opacity: .7; transform-origin: 0 50%; transform: scaleX(0); }
+.soundcheck { display: flex; flex-direction: column; gap: 10px; }
+.soundcheck .row2 { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.soundcheck .why { font-size: 14px; color: var(--dim); line-height: 1.45; }
+.toggle { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 14px 16px; border-radius: var(--r); background: var(--surface); min-height: 64px; }
+.toggle .t { font-size: 15px; color: var(--ink); line-height: 1.4; }
+.toggle .sw { width: 48px; height: 28px; border-radius: 999px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--edge); position: relative; flex: none; }
+.toggle .sw::after { content: ""; position: absolute; top: 4px; left: 4px; width: 20px; height: 20px; border-radius: 50%; background: var(--dim); }
+.toggle[aria-checked="true"] .sw { background: var(--dawn-soft); box-shadow: inset 0 0 0 1px var(--dawn); }
+.toggle[aria-checked="true"] .sw::after { left: 24px; background: var(--dawn); }
+.night-sound { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 10px; }
+.night-sound .nbar { width: 64px; height: 2px; border-radius: 1px; background: #1A120C; overflow: hidden; }
+.night-sound .nbar > i { display: block; height: 100%; width: 100%; background: var(--night-low); opacity: .6; transform-origin: 0 50%; transform: scaleX(0); }
+.stat3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.stat3 > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stat3 .v { font-family: var(--display); font-size: 30px; line-height: 1.05; color: var(--ink-strong); }
+.stat3 .k { font-size: 13px; color: var(--dim); }
+.sndline { width: 100%; display: block; }
+.clips { display: flex; flex-direction: column; }
+.clip { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 4px 6px; align-items: center; padding: 10px 0; }
+.clip .when { white-space: nowrap; }
+.clip + .clip { border-top: 1px solid var(--line); }
+.clip .when { font-size: 15px; color: var(--ink); }
+.clip .what { font-size: 13px; color: var(--dim); }
+.clip .acts { display: flex; gap: 2px; }
+.clip .iconbtn { padding: 0 8px; font-size: 13px; color: var(--dim); min-width: 44px; }
+.clip .play { color: var(--dawn); }
+.patterns p + p { margin-top: 10px; }
+
 /* --- alarm: hold to get up ---------------------------------------------- */
 .alarm-time { font-family: var(--display); font-weight: 300; font-size: 88px; line-height: .9; letter-spacing: -.04em; color: var(--dawn); }
 .hold { position: relative; overflow: hidden; isolation: isolate; min-height: 112px !important; font-size: 21px !important; }
@@ -366,6 +397,7 @@ hr.hair { height: 1px; background: var(--line); border: 0; margin: 0; }
   #s-tracking .btn, #s-tracking .btn:active { transition: none; transform: none; }
 
   .night-mark { animation: still-listening 12s ease-in-out infinite; }
+  .night-sound .nbar > i, .meter > i { transition: transform .9s ease-out; }
   @keyframes still-listening { 0%, 100% { opacity: .18; } 50% { opacity: .55; } }
 
   .hold .fill { transition: transform .35s var(--settle); }
@@ -473,13 +505,18 @@ function curve(pts, x) {
    The phone lies on the mattress. Body movement reaches it as vibration through
    the mattress, so what we measure is bed motion, not wrist motion. We never
    keep a raw sample: motion collapses to one count per 30s epoch, and audio
-   collapses to dB aggregates. No audio is ever buffered or stored.
+   collapses to dB aggregates and counts of coughs and snores. The only audio
+   ever kept is a ~3 s ring in memory, and short clips of detected events in
+   IndexedDB if — and only if — the clip toggle is on. Nothing is uploaded.
    ========================================================================== */
 const Signal = {
   motionOK: false, audioOK: false, wakeOK: false,
   _epochs: [], _cur: null, _t0: 0,
   _accBuf: [], _lastMag: null, _hp: 0,
   _ac: null, _analyser: null, _stream: null, _freq: null, _time: null,
+  _worklet: null, _det: null, _ring: [], _premic: null,
+  saveClips: false, events: [], frames: 0, level: null, frameLevel: null, _heardAt: 0,
+  audioWhy: '', workletWhy: '', onSound: null,
   _rafId: null, _tickId: null, _wakeLock: null,
   onEpoch: null,
 
@@ -534,14 +571,20 @@ const Signal = {
   },
 
   /* --- bedtime: re-arm sensors from the "Start the night" tap ----------------
-     The check result is remembered in settings, but the permission is not:
+     The motion check result is remembered in settings, but the permission is not:
      iOS Safari wants DeviceMotionEvent.requestPermission() again on every page
      load, and it only answers when called straight from a tap. Call this FIRST
      in the tap handler, before anything else awaits. Once granted it resolves
      at once, with no second prompt. */
   prepare(sensors) {
     const s = sensors || {};
-    this.audioOK = !!(s.audio && s.audio.ok && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    /* Always try the microphone at bedtime, whatever the first-run check said:
+       a declined or failed check must not silently switch sound off for good.
+       getUserMedia is called here, inside the tap, which is what iOS wants; a
+       failure is shown on the tracking screen. */
+    this.audioOK = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    this._premic = null;
+    if (this.audioOK) { try { this._premic = this._openMic(this._plainPref); this._premic.catch(() => {}); } catch (_) { this._premic = null; } }
     this.motionOK = false;
     if (!(s.motion && s.motion.ok) || typeof DeviceMotionEvent === 'undefined') return Promise.resolve(false);
     if (typeof DeviceMotionEvent.requestPermission !== 'function') { this.motionOK = true; return Promise.resolve(true); }
@@ -578,10 +621,17 @@ const Signal = {
   },
 
   /* --- audio ---------------------------------------------------------------
-     One analyser frame every 250ms. We take RMS in dBFS and a band energy in
-     the 60-500Hz region where snoring lives. Nothing is retained. */
+     Two paths off the same microphone:
+     1. the analyser, read every 250 ms, collapses to the per-epoch a/ap/ab
+        numbers the night scorer has always used (unchanged maths);
+     2. the sound worklet (sound-worklet.js), where the browser has
+        AudioWorklet: 50 ms frames for the cough/snore detector, plus an 8 kHz
+        copy that lives only in a ~3 s ring in memory, and is written out as a
+        clip ONLY when the clip toggle is on and an event was just detected.
+     WebKit only runs nodes that have a path to the speakers, so both hang off
+     a zero-gain node into the destination: pulled, never heard. */
   _sampleAudio() {
-    if (!this._analyser || !this._cur) return;
+    if (!this._analyser) return;
     /* Float, never the Byte variants: getByteTimeDomainData quantises to 8 bits,
        putting the usable noise floor near -48 dBFS — above a quiet bedroom — so
        a whole night would flatten to a constant. */
@@ -590,6 +640,9 @@ const Signal = {
     for (let i = 0; i < this._time.length; i++) { const d = this._time[i]; sum += d * d; if (Math.abs(d) > pk) pk = Math.abs(d); }
     const rms = Math.sqrt(sum / this._time.length);
     const db = 20 * Math.log10(Math.max(rms, 1e-7));       // true dBFS, ~-140..0
+    this.level = db; this._lastLevelAt = Date.now();
+    if (rms > 0) this._heardAt = Date.now();
+    if (!this._cur) return;
     this._analyser.getFloatFrequencyData(this._freq);      // dB per bin, not 0-255
     const nyq = this._ac.sampleRate / 2, bins = this._freq.length;
     const lo = Math.floor(60 / nyq * bins), hi = Math.ceil(500 / nyq * bins);
@@ -605,7 +658,7 @@ const Signal = {
     this._cur.aN++;
   },
 
-  _newEpoch(t) { return { t, mSum: 0, mPeak: 0, mN: 0, aSum: 0, aPeak: -140, aBand: 0, aN: 0 }; },
+  _newEpoch(t) { return { t, mSum: 0, mPeak: 0, mN: 0, aSum: 0, aPeak: -140, aBand: 0, aN: 0, sc: 0, sk: 0, so: 0, sf: 0 }; },
 
   _closeEpoch() {
     if (!this._cur) return;
@@ -618,14 +671,123 @@ const Signal = {
       ap: c.aN ? Math.round(c.aPeak) : null,                 // peak dBFS
       ab: c.aN ? Math.round(c.aBand) : null,                 // 60-500Hz band energy 0..255
     };
+    /* sound events in this epoch, from the worklet path (absent without it) */
+    if (this._worklet) { e.sc = c.sc; e.sk = c.sk; e.so = c.so; }   // coughs, snores, other
     this._epochs.push(e);
     if (this.onEpoch) { try { this.onEpoch(e, this._epochs); } catch (_) {} }
+  },
+
+  /* one place that builds the audio graph, for start() and for a context rebuild */
+  async _attachAudio() {
+    const ac = this._ac = Alarm.ctx();                       // share one context with the alarm
+    const src = ac.createMediaStreamSource(this._stream);
+    this._analyser = ac.createAnalyser();
+    this._analyser.fftSize = 2048;
+    this._analyser.smoothingTimeConstant = 0.4;
+    this._freq = new Float32Array(this._analyser.frequencyBinCount);
+    this._time = new Float32Array(this._analyser.fftSize);
+    /* the pull: analyser (and worklet) → gain 0 → speakers. Silent, but it is
+       what makes WebKit actually run the graph. Without it Safari hands the
+       analyser silence. */
+    const mute = ac.createGain(); mute.gain.value = 0;
+    src.connect(this._analyser); this._analyser.connect(mute); mute.connect(ac.destination);
+    this._src = src; this._mute = mute;
+    this._worklet = null;
+    if (ac.audioWorklet && typeof AudioWorkletNode === 'function') {
+      try {
+        if (this._workletCtx !== ac) { await ac.audioWorklet.addModule('sound-worklet.js'); this._workletCtx = ac; }
+        const node = new AudioWorkletNode(ac, 'small-hours-sound', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+        node.port.onmessage = (m) => this._onFrame(m.data);
+        src.connect(node); node.connect(mute);
+        this._worklet = node;
+        this._sr8 = 8000;
+      } catch (e) { this._worklet = null; this.workletWhy = String(e && e.message || e); }
+    }
+    try { const p = ac.resume(); if (p && p.catch) p.catch(() => {}); } catch (_) {}
+  },
+
+  /* Raw first: echo cancelling and noise suppression are built to delete
+     exactly the steady low sounds (snoring) we are listening for. Some
+     devices open a raw track that only ever carries zeros, though, so
+     `plain` asks for the browser's default track instead — see the
+     silence watchdog in start() and the retry in soundCheck(). */
+  _openMic(plain) {
+    return navigator.mediaDevices.getUserMedia(plain ? { audio: true } : {
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
+  },
+
+  /* A track that opened but has carried nothing but digital zeros for a few
+     seconds: reopen it once with the browser's default settings. */
+  async _reopenPlain() {
+    if (this._plain || !this._stream) return;
+    this._plain = true;
+    try {
+      const s = await this._openMic(true);
+      this._stream.getTracks().forEach(t => t.stop());
+      this._stream = s;
+      this._detach();
+      await this._attachAudio();
+    } catch (_) {}
+  },
+
+  /* --- worklet frames → detector → epoch counts (+ clips) ----------------- */
+  _onFrame(f) {
+    if (!f || f.hello) return;
+    this.frames++;
+    this.frameLevel = f.db; this._heardAt = Date.now();
+    if (f.pcm) this._ring.push(f.pcm);
+    if (this._ring.length > 60) this._ring.shift();          // 60 × 50 ms = 3 s
+    if (!this._det) return;
+    /* time each frame by its index on the audio clock, so message batching on
+       a busy main thread cannot bunch up the breathing rhythm */
+    if (this._fBase == null || f.i < this._fLast) this._fBase = Date.now() - f.i * SoundEvents.FRAME_MS;
+    this._fLast = f.i;
+    const t = this._fBase + f.i * SoundEvents.FRAME_MS;
+    this._fNow = t;
+    for (const ev of SoundEvents.push(this._det, f, t)) this._onEvent(ev);
+    if (this._pendingClip) this._feedClip(f.pcm);
+  },
+
+  _onEvent(ev) {
+    if (ev.type === 'pending') return;
+    this.events.push({ t: ev.t, type: ev.type, dur: ev.dur, peak: ev.peak });
+    if (this.events.length > 4000) this.events.shift();
+    const c = this._cur;
+    if (c && ev.t >= c.t) { if (ev.type === 'cough') c.sc++; else if (ev.type === 'snore') c.sk++; else c.so++; }
+    else {                                                    // landed in an already-closed epoch (a late-confirmed snore)
+      const e = this._epochs.slice().reverse().find(x => ev.t >= x.t && ev.t < x.t + EPOCH_MS);
+      if (e && e.sc != null) { if (ev.type === 'cough') e.sc++; else if (ev.type === 'snore') e.sk++; else e.so++; }
+    }
+    if (this.onSound) { try { this.onSound(ev); } catch (_) {} }
+    if (this.saveClips && !ev.late && !this._pendingClip) {
+      /* 0.5 s before the event's start is already in the ring; collect until
+         1 s after its end, capped at 4 s */
+      const framesBack = Math.ceil(((this._fNow || Date.now()) - ev.t) / SoundEvents.FRAME_MS) + 10;
+      const pre = this._ring.slice(-Math.min(this._ring.length, framesBack));
+      this._pendingClip = { ev, chunks: pre, need: 20, max: 80 };
+    }
+  },
+
+  _feedClip(pcm) {
+    const p = this._pendingClip;
+    p.chunks.push(pcm);
+    if (--p.need > 0 && p.chunks.length < p.max) return;
+    this._pendingClip = null;
+    const chunks = p.chunks.slice(-p.max);
+    const n = chunks.reduce((s, c) => s + c.length, 0), all = new Int16Array(n);
+    let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; }
+    Clips.save({ t: p.ev.t, type: p.ev.type, peak: p.ev.peak, dur: p.ev.dur, night: this._t0, sr: 8000, pcm: all }).catch(() => {});
   },
 
   async start() {
     this._epochs = []; this._lastMag = null; this._hp = 0;
     this._t0 = Date.now();
     this._cur = this._newEpoch(this._t0);
+    this.events = []; this.frames = 0; this._ring = []; this._pendingClip = null; this._fBase = null; this._fLast = -1;
+    this._det = SoundEvents.create();
+    this.audioWhy = '';
+    this._plain = false; this._everHeard = false; this._micAt = 0;
 
     await this._holdWake();
     document.addEventListener('visibilitychange', this._wakeHandler);
@@ -637,25 +799,30 @@ const Signal = {
 
     if (this.audioOK) {
       try {
-        this._stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-        });
-        this._ac = Alarm.ctx();                       // share one context with the alarm
-        const src = this._ac.createMediaStreamSource(this._stream);
-        this._analyser = this._ac.createAnalyser();
-        this._analyser.fftSize = 2048;
-        this._analyser.smoothingTimeConstant = 0.4;
-        src.connect(this._analyser);                  // analyser only — never to destination
-        this._freq = new Float32Array(this._analyser.frequencyBinCount);
-        this._time = new Float32Array(this._analyser.fftSize);
-      } catch (e) { this.audioOK = false; }
+        this._stream = this._premic ? await this._premic : await this._openMic(this._plainPref);
+        if (this._plainPref) this._plain = true;
+        this._premic = null;
+        await this._attachAudio();
+        this._micAt = Date.now();
+      } catch (e) {
+        this.audioOK = false;
+        this.audioWhy = e && e.name === 'NotAllowedError' ? 'Microphone access was declined, so tonight is movement only.' : 'The microphone could not be opened, so tonight is movement only.';
+        if (this._stream) { this._stream.getTracks().forEach(t => t.stop()); this._stream = null; }
+      }
     }
 
     /* Self-correcting clock: schedule against wall time so 8 hours of timer
        throttling cannot accumulate drift. */
     const tick = () => {
       const now = Date.now();
-      if (this.audioOK) this._sampleAudio();
+      if (this.audioOK) {
+        /* iOS can drop the shared context to suspended/interrupted after the
+           mic opens or a notification; ask for it back */
+        if (this._ac && this._ac.state !== 'running') Alarm.recover();
+        this._sampleAudio();
+        if (this.frameLevel > -135 || this.level > -135) this._everHeard = true;
+        if (!this._everHeard && !this._plain && this._micAt && now - this._micAt > 4000) this._reopenPlain();
+      }
       while (this._cur && now - this._cur.t >= EPOCH_MS) {
         const nextT = this._cur.t + EPOCH_MS;
         this._closeEpoch();
@@ -667,44 +834,324 @@ const Signal = {
     return true;
   },
 
+  _detach() {
+    if (this._worklet) { try { this._worklet.port.onmessage = null; this._worklet.disconnect(); } catch (_) {} this._worklet = null; }
+    for (const n of [this._src, this._analyser, this._mute]) { if (n) try { n.disconnect(); } catch (_) {} }
+    this._src = null; this._mute = null; this._analyser = null;
+  },
+
   stop() {
+    if (this._det) for (const ev of SoundEvents.flush(this._det)) this._onEvent(ev);
     if (this._cur && this._cur.mN + this._cur.aN > 0) this._closeEpoch();
-    this._cur = null;
+    this._cur = null; this._det = null;
     clearTimeout(this._tickId); this._tickId = null;
     if (this._boundMotion) window.removeEventListener('devicemotion', this._boundMotion);
     document.removeEventListener('visibilitychange', this._wakeHandler);
     if (this._wakeLock) { try { this._wakeLock.release(); } catch (_) {} this._wakeLock = null; }
     if (this._stream) { this._stream.getTracks().forEach(t => t.stop()); this._stream = null; }
-    this._analyser = null;
+    this._detach(); this._ring = [];
     return this._epochs;
   },
 
   /* The alarm owns the AudioContext and shares it with us. If it ever has to
-     rebuild that context, our source and analyser died with the old one — so
-     re-point them at the new context and let the night carry on. */
+     rebuild that context, our source, analyser and worklet died with the old
+     one — so re-point them at the new context and let the night carry on. */
   reattachAudio() {
     if (!this.audioOK || !this._stream || !this._cur) return;
-    try {
-      this._ac = Alarm.ctx();
-      const src = this._ac.createMediaStreamSource(this._stream);
-      this._analyser = this._ac.createAnalyser();
-      this._analyser.fftSize = 2048;
-      this._analyser.smoothingTimeConstant = 0.4;
-      src.connect(this._analyser);                  // analyser only — never to destination
-      this._freq = new Float32Array(this._analyser.frequencyBinCount);
-      this._time = new Float32Array(this._analyser.fftSize);
-    } catch (_) { this._analyser = null; this.audioOK = false; }
+    this._detach();
+    this._attachAudio().catch(() => { this._analyser = null; this.audioOK = false; });
   },
 
   /* Hand the audio session back to the OS. The alarm calls this before it
      sounds, so playback is not stuck on the record route (earpiece, quiet). */
   releaseMic() {
+    if (this._det) for (const ev of SoundEvents.flush(this._det)) this._onEvent(ev);
+    this._pendingClip = null;
     if (this._stream) { this._stream.getTracks().forEach(t => t.stop()); this._stream = null; }
-    this._analyser = null;
+    this._detach(); this._ring = [];
     this.audioOK = false;
   },
 
+  /* --- sound check: a few seconds of live level on the home screen -------- */
+  async soundCheck(onLevel, ms = 5000, plain = false) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return { ok: false, why: 'No microphone API in this browser.' };
+    let stream;
+    try { stream = await this._openMic(plain); }
+    catch (e) { return { ok: false, why: e && e.name === 'NotAllowedError' ? 'Microphone access was declined. Allow it for this site in the browser settings, then try again.' : 'The microphone could not be opened' + (window.isSecureContext ? '.' : ' — it needs the page served over HTTPS.') }; }
+    const ac = Alarm.ctx();
+    try { if (ac.state !== 'running') await Promise.race([ac.resume(), new Promise(r => setTimeout(r, 1500))]); } catch (_) {}
+    const src = ac.createMediaStreamSource(stream), an = ac.createAnalyser(), mute = ac.createGain();
+    an.fftSize = 2048; mute.gain.value = 0;
+    src.connect(an); an.connect(mute); mute.connect(ac.destination);   // pulled, so Safari runs it
+    const buf = new Float32Array(an.fftSize);
+    let min = 0, max = -140, n = 0;   // dBFS of the quietest / loudest read
+    const t0 = Date.now();
+    await new Promise(done => {
+      const step = () => {
+        an.getFloatTimeDomainData(buf);
+        let s = 0; for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+        const db = 20 * Math.log10(Math.max(Math.sqrt(s / buf.length), 1e-7));
+        /* skip the digital zeros a mic sends while it wakes up: they are not the room */
+        if (db > -139) { n++; if (db < min) min = db; if (db > max) max = db; }
+        try { onLevel && onLevel(db, (Date.now() - t0) / ms); } catch (_) {}
+        if (Date.now() - t0 < ms) setTimeout(step, 80); else done();
+      };
+      step();
+    });
+    for (const x of [src, an, mute]) try { x.disconnect(); } catch (_) {}
+    stream.getTracks().forEach(t => t.stop());
+    if (max <= -139 && !plain) { const r = await this.soundCheck(onLevel, ms, true); if (r.ok) { r.plain = true; this._plainPref = true; } return r; }
+    if (max <= -139) return { ok: false, why: 'The microphone opened but sent only silence. Close other apps using it, reload the page and try again.', state: ac.state };
+    return { ok: true, min: Math.round(min), max: Math.round(max), range: Math.round(max - min), state: ac.state };
+  },
+
   epochs() { return this._epochs; },
+};
+</script>
+<script>
+/* ============================================================================
+   SOUND EVENTS — 50 ms sound frames → coughs, snores, other noise
+   Pure functions over plain numbers (no Web Audio, no DOM), so the exact code
+   that runs on the phone also runs in node: test/sound.check.mjs feeds it
+   real recordings through docs/sound-worklet.js and prints how often it is
+   right. The frames come from that worklet: { db, lo, hi, zcr } in dBFS.
+
+   1. Adaptive floor: each second's median level is kept for 60 s; the floor
+      is the low (10th) percentile of those, so a fan or a road sets the floor
+      and a cough does not.
+   2. Events: runs of frames more than RISE dB over the floor, merged across
+      gaps of up to 150 ms.
+   3. Each event is described (length, how far over the floor, how fast it
+      peaks, low band vs high band) and classified:
+      cough — short, explosive, broadband;
+      snore — low-band heavy, a breath long, and REPEATING at breathing pace
+              (one snore-like sound alone is not called a snore);
+      other — everything else: talking, traffic, doors.
+   ========================================================================== */
+const SoundEvents = {
+  FRAME_MS: 50,
+  P: {
+    rise: 10,            // dB over floor to count as sound
+    gap: 3,              // frames (150 ms) of quiet that still belong to one event
+    floorPct: 0.10, floorSecs: 60, floorMin: -90,
+    coughMin: 150, coughMax: 900, coughAttack: 100, coughPeak: 16, coughHi: 14, coughLoHiMax: 9,
+    snoreMin: 300, snoreMax: 3000, snoreLoHi: 8, snorePeak: 12, snoreHiMax: 18, snoreLoOver: 4,
+    trainMin: 3, ioiMin: 2500, ioiMax: 8000, ioiCV: 0.35,
+    fitGap: 10000, fitMin: 2,
+    coughP: 0.5, snoreP: 0.5, split: 8,   // model score needed (0 = even odds)
+  },
+  /* Two small models (60 decision stumps each), fitted by boosting on ESC-50
+     folds 1-3 only; test/sound.check.mjs reports folds 4-5, never seen here.
+     Each stump: [feature index in features(), threshold, vote if <=, vote
+     if >]; the event's score is the sum of the votes. */
+  MODEL: {
+    cough: [[11,-0.957,-0.29,0.29],[11,-0.848,-0.161,0.161],[22,0.844,-0.18,0.18],[4,-0.515,-0.129,0.129],[22,1.053,-0.124,0.124],[29,0.435,-0.125,0.125],[22,-0.884,0.099,-0.099],[15,-1.06,0.118,-0.118],[22,0.844,-0.095,0.095],[25,0.556,0.102,-0.102],[9,0.595,-0.09,0.09],[12,-0.704,-0.084,0.084],[22,1.096,-0.091,0.091],[10,-1.62,-0.099,0.099],[3,2.535,-0.08,0.08],[25,0.556,0.077,-0.077],[22,0.726,-0.084,0.084],[15,-1.969,-0.075,0.075],[30,0.605,0.085,-0.085],[22,-1.186,0.075,-0.075],[10,-1.62,-0.08,0.08],[22,1.096,-0.072,0.072],[6,0.345,-0.077,0.077],[25,-0.253,0.074,-0.074],[27,-0.032,-0.072,0.072],[6,0.895,-0.073,0.073],[14,-1.356,-0.081,0.081],[11,-0.886,-0.07,0.07],[30,0.205,0.07,-0.07],[25,0.556,0.074,-0.074],[22,1.096,-0.066,0.066],[15,-1.08,0.07,-0.07],[6,0.895,-0.064,0.064],[12,-0.495,0.072,-0.072],[13,-0.714,-0.069,0.069],[29,0.435,-0.068,0.068],[5,0.895,-0.063,0.063],[10,-1.62,-0.065,0.065],[11,-0.439,-0.074,0.074],[27,0.238,-0.057,0.057],[25,0.445,0.068,-0.068],[6,0.895,-0.063,0.063],[4,-0.515,-0.067,0.067],[2,5.613,-0.061,0.061],[25,-0.253,0.059,-0.059],[27,-0.032,-0.062,0.062],[15,-1.969,-0.058,0.058],[9,0.595,-0.058,0.058],[6,0.345,-0.058,0.058],[6,0.895,-0.068,0.068],[6,0.665,0.061,-0.061],[29,0.605,-0.059,0.059],[12,-0.495,0.056,-0.056],[5,0.475,0.06,-0.06],[11,-0.921,-0.066,0.066],[13,-0.714,-0.06,0.06],[3,2.305,0.053,-0.053],[3,2.535,-0.054,0.054],[10,-1.62,-0.06,0.06],[22,1.096,-0.059,0.059]],
+    snore: [[10,-0.363,-0.586,0.586],[4,0.025,-0.377,0.377],[10,-0.291,-0.305,0.305],[28,6.05,-0.305,0.305],[4,0.965,-0.252,0.252],[31,0.507,-0.236,0.236],[14,-0.996,0.201,-0.201],[24,-0.474,0.212,-0.212],[13,-1.83,0.211,-0.211],[2,5.925,-0.194,0.194],[10,-0.333,-0.183,0.183],[5,0.705,-0.173,0.173],[4,0.025,-0.158,0.158],[12,-0.446,-0.173,0.173],[10,-0.585,-0.18,0.18],[0,6.353,-0.174,0.174],[23,-1.092,0.141,-0.141],[6,0.525,-0.159,0.159],[4,1.625,-0.139,0.139],[31,0.507,-0.153,0.153],[3,2.395,-0.131,0.131],[10,-0.585,-0.136,0.136],[12,-0.446,-0.168,0.168],[27,-0.025,0.144,-0.144],[10,-0.585,-0.134,0.134],[2,5.925,-0.144,0.144],[5,1.055,-0.13,0.13],[26,-0.307,-0.149,0.149],[10,-0.333,-0.142,0.142],[25,-0.143,0.141,-0.141],[22,0.004,-0.141,0.141],[5,0.685,-0.119,0.119],[14,-2.421,0.142,-0.142],[9,0.455,0.142,-0.142],[10,-0.291,-0.136,0.136],[29,0.555,-0.138,0.138],[12,-0.446,-0.122,0.122],[14,-0.996,0.129,-0.129],[5,0.795,-0.118,0.118],[10,-0.585,-0.12,0.12],[31,0.659,-0.13,0.13],[14,-2.478,0.117,-0.117],[15,-2.309,-0.142,0.142],[10,-0.333,-0.121,0.121],[25,-0.143,0.13,-0.13],[3,2.395,-0.122,0.122],[13,-1.83,0.131,-0.131],[2,5.925,-0.132,0.132],[26,-0.307,-0.114,0.114],[25,-0.423,0.134,-0.134],[10,-0.291,-0.131,0.131],[9,0.455,0.118,-0.118],[23,-1.059,0.116,-0.116],[26,-0.307,-0.122,0.122],[4,1.835,-0.119,0.119],[15,-2.309,-0.139,0.139],[13,-1.83,0.114,-0.114],[27,-0.025,0.109,-0.109],[10,-0.333,-0.115,0.115],[11,-0.597,-0.11,0.11]],
+  },
+
+  create(over) {
+    return {
+      P: { ...this.P, ...(over || {}) },
+      n: 0, sec: [], secLo: [], secHi: [], hist: [], histLo: [], histHi: [],
+      floor: null, floorLo: null, floorHi: null,
+      cur: null, quiet: 0, cands: [], lastCough: -1e9, fit: 0, fits: 0,
+    };
+  },
+
+  _pct(a, p) { if (!a.length) return null; const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.max(0, Math.floor(p * (s.length - 1))))]; },
+  _med(a) { return this._pct(a, 0.5); },
+  _pow(a, k) { let s = 0; for (const f of a) s += Math.pow(10, f[k] / 10); return 10 * Math.log10(Math.max(s / a.length, 1e-14)); },
+
+  /* One frame in; returns finished events (usually none). tMs: frame start
+     time on any clock — the app passes Date.now()-based times. */
+  push(d, f, tMs) {
+    const P = d.P, out = [];
+    d.n++;
+    d.sec.push(f.db); d.secLo.push(f.lo); d.secHi.push(f.hi);
+    if (d.sec.length >= 1000 / this.FRAME_MS) {
+      d.hist.push(this._med(d.sec)); d.histLo.push(this._med(d.secLo)); d.histHi.push(this._med(d.secHi));
+      for (const h of [d.hist, d.histLo, d.histHi]) if (h.length > P.floorSecs) h.shift();
+      d.sec = []; d.secLo = []; d.secHi = [];
+      const pct = d.hist.length >= 5 ? P.floorPct : 0;
+      d.floor = Math.max(P.floorMin, this._pct(d.hist, pct));
+      d.floorLo = Math.max(P.floorMin, this._pct(d.histLo, pct));
+      d.floorHi = Math.max(P.floorMin, this._pct(d.histHi, pct));
+    }
+    if (d.floor == null) return out;                          // first second: learning the room
+    const on = f.db > d.floor + P.rise;
+    if (on) {
+      if (!d.cur) d.cur = { t: tMs, frames: [], floor: d.floor, floorLo: d.floorLo, floorHi: d.floorHi, active: 0 };
+      else for (let k = 0; k < d.quiet; k++) d.cur.frames.push(d.cur._q[k]);
+      d.cur.frames.push(f); d.cur.active++; d.cur._q = []; d.quiet = 0;
+    } else if (d.cur) {
+      d.cur._q.push(f); d.quiet++;
+      if (d.quiet > P.gap) { out.push(...this._close(d)); }
+    }
+    return out;
+  },
+
+  /* close any open event (end of night) */
+  flush(d) { return d.cur ? this._close(d) : []; },
+
+  describe(ev) {
+    const fr = ev.frames, n = fr.length; let pk = 0;
+    for (let i = 1; i < n; i++) if (fr[i].db > fr[pk].db) pk = i;
+    let zc = 0, vo = 0, hiMax = -200, loMax = -200, m = 0, m2 = 0;
+    for (const f of fr) { zc += f.zcr || 0; vo += f.vo || 0; if (f.hi > hiMax) hiMax = f.hi; if (f.lo > loMax) loMax = f.lo; m += f.db; m2 += f.db * f.db; }
+    /* decay: frames after the peak until 10 dB down; subpeaks: local maxima 6 dB over their dip */
+    let dec = n - pk; for (let i = pk + 1; i < n; i++) if (fr[i].db < fr[pk].db - 10) { dec = i - pk; break; }
+    let sub = 0, dip = fr[0].db, up = true;
+    for (let i = 1; i < n; i++) { const v = fr[i].db; if (up && v < fr[i - 1].db) { if (fr[i - 1].db - dip >= 6) sub++; up = false; dip = v; } else if (!up) { if (v < dip) dip = v; if (v > dip + 3) up = true; } }
+    /* spectral shape: six bands relative to the event's own total, over the
+       whole event and at the peak frame */
+    const shape = [], pshape = [];
+    const hasB = fr[0].b && fr[0].b.length === 6;
+    if (hasB) {
+      const tot = this._pow(fr, 'db');
+      for (let k = 0; k < 6; k++) { let s = 0; for (const f of fr) s += Math.pow(10, f.b[k] / 10); shape.push(10 * Math.log10(Math.max(s / n, 1e-14)) - tot); pshape.push(fr[pk].b[k] - fr[pk].db); }
+    }
+    const sd = Math.sqrt(Math.max(0, m2 / n - (m / n) * (m / n)));
+    /* onset vs tail: the spectrum of the first 100 ms against the rest (a
+       cough opens with a broadband burst, then a softer tail), how long the
+       sound stays within 6 dB of its peak, and the voicing at the peak */
+    const eshape = [];
+    if (hasB && n >= 3) {
+      const head = fr.slice(0, Math.min(2, n - 1)), tail = fr.slice(Math.min(2, n - 1));
+      for (let k = 0; k < 6; k++) {
+        let h = 0, t = 0; for (const f of head) h += Math.pow(10, f.b[k] / 10); for (const f of tail) t += Math.pow(10, f.b[k] / 10);
+        eshape.push(10 * Math.log10(Math.max(h / head.length, 1e-14)) - 10 * Math.log10(Math.max(t / tail.length, 1e-14)));
+      }
+    } else for (let k = 0; k < 6; k++) eshape.push(0);
+    let top = 0; for (const f of fr) if (f.db >= fr[pk].db - 6) top++;
+    return {
+      t: ev.t, dur: n * this.FRAME_MS,
+      peak: +(fr[pk].db - ev.floor).toFixed(1),
+      peakDb: fr[pk].db,
+      attack: pk * this.FRAME_MS,
+      lohi: +(this._pow(fr, 'lo') - this._pow(fr, 'hi')).toFixed(1),
+      hiR: +(hiMax - ev.floorHi).toFixed(1), loR: +(loMax - ev.floorLo).toFixed(1),
+      zcr: +(zc / n).toFixed(3), vo: +(vo / n).toFixed(2), fill: +(ev.active / n).toFixed(2),
+      decay: dec * this.FRAME_MS, sub, sd: +sd.toFixed(1), shape, pshape, eshape,
+      top: top * this.FRAME_MS, vop: fr[pk].vo || 0, zp: fr[pk].zcr || 0,
+    };
+  },
+
+  /* the feature vector the two small models below were fitted on */
+  features(e) {
+    const L = Math.log;
+    const x = [L(e.dur), L(e.attack + 50), L(e.decay + 50), Math.min(e.peak, 50) / 10, e.lohi / 10,
+      e.zcr * 10, e.vo, e.fill, Math.min(e.sub, 6), e.sd / 10];
+    for (const v of e.shape) x.push(v / 10);
+    for (const v of e.pshape) x.push(v / 10);
+    for (const v of e.eshape) x.push(v / 10);
+    x.push(L(e.top + 50), e.vop, e.zp * 10, e.top / e.dur);
+    return x;
+  },
+  /* boosted decision stumps: each [feature, threshold, vote if <=, vote if >];
+     the score is the sum of votes (positive = yes) */
+  score(model, x) {
+    if (!model) return -1e9;
+    let z = 0; for (const [j, thr, a, b] of model) z += x[j] <= thr ? a : b;
+    return z;
+  },
+
+  isCough(e, P) {
+    if (!(e.dur >= P.coughMin && e.dur <= P.coughMax && e.peak >= P.coughPeak)) return false;
+    if (this.MODEL && this.MODEL.cough && e.shape.length) return this.score(this.MODEL.cough, this.features(e)) >= P.coughP;
+    return e.attack <= P.coughAttack && e.hiR >= P.coughHi && e.lohi <= P.coughLoHiMax;
+  },
+  isSnoreLike(e, P) {
+    if (!(e.dur >= P.snoreMin && e.dur <= P.snoreMax && e.peak >= P.snorePeak)) return false;
+    if (this.MODEL && this.MODEL.snore && e.shape.length) return this.score(this.MODEL.snore, this.features(e)) >= P.snoreP;
+    return e.lohi >= P.snoreLoHi && e.hiR <= e.loR - P.snoreLoOver && e.hiR <= P.snoreHiMax;
+  },
+
+  /* A run of sound can hold several coughs back to back. Split it at every
+     dip that falls SPLIT dB below the peaks on both sides, so each burst is
+     judged on its own. */
+  split(ev, dB) {
+    const fr = ev.frames, n = fr.length, cuts = [];
+    let i = 0;
+    while (i < n) {
+      let pk = i; while (pk + 1 < n && fr[pk + 1].db >= fr[pk].db) pk++;          // climb to a peak
+      let v = pk; while (v + 1 < n && fr[v + 1].db <= fr[v].db) v++;               // fall to a valley
+      if (v >= n - 1) break;
+      let pk2 = v; while (pk2 + 1 < n && fr[pk2 + 1].db >= fr[pk2].db) pk2++;
+      let maxL = -200; for (let k = (cuts.length ? cuts[cuts.length - 1] : 0); k <= pk; k++) maxL = Math.max(maxL, fr[k].db);
+      if (maxL - fr[v].db >= dB && fr[pk2].db - fr[v].db >= dB) cuts.push(v);
+      i = v + 1;
+    }
+    if (!cuts.length) return [ev];
+    const out = []; let a = 0;
+    for (const c of [...cuts, n]) {
+      const frames = fr.slice(a, c);
+      if (frames.length) out.push({ ...ev, t: ev.t + a * this.FRAME_MS, frames, active: frames.length });
+      a = c;
+    }
+    return out;
+  },
+
+  _close(d) {
+    const ev = d.cur; d.cur = null; d.quiet = 0;
+    const out = [];
+    for (const part of this.split(ev, d.P.split)) out.push(...this._classify(d, part));
+    return out;
+  },
+
+  _classify(d, ev) {
+    const P = d.P;
+    const e = this.describe(ev), out = [];
+    if (this.isCough(e, P)) {
+      e.type = 'cough';
+      if (e.t - d.lastCough <= P.fitGap) { d.fit++; if (d.fit === P.fitMin) { d.fits++; e.fitStart = true; } }
+      else d.fit = 1;
+      d.lastCough = e.t;
+      out.push(e);
+      return out;
+    }
+    if (this.isSnoreLike(e, P)) {
+      /* a snore is only a snore when it repeats at breathing pace */
+      d.cands = d.cands.filter(c => e.t - c.t <= P.ioiMax * (P.trainMin + 1));
+      const prev = d.cands[d.cands.length - 1];
+      if (prev && e.t - prev.t > P.ioiMax) d.cands = [];
+      if (prev && e.t - prev.t < P.ioiMin) { e.type = 'other'; out.push(e); return out; }  // too fast to be breaths
+      d.cands.push(e);
+      const run = d.cands.slice(-P.trainMin);
+      if (run.length >= P.trainMin) {
+        const ioi = []; for (let i = 1; i < run.length; i++) ioi.push(run[i].t - run[i - 1].t);
+        const m = ioi.reduce((s, v) => s + v, 0) / ioi.length;
+        const sd = Math.sqrt(ioi.reduce((s, v) => s + (v - m) * (v - m), 0) / ioi.length);
+        if (ioi.every(v => v >= P.ioiMin && v <= P.ioiMax) && sd / m <= P.ioiCV) {
+          /* confirm the whole run; earlier members were held back as pending */
+          for (const c of run) if (c.type !== 'snore') { c.type = 'snore'; if (c !== e) { c.late = true; out.push(c); } }
+          e.type = 'snore'; out.push(e);
+          return out;
+        }
+      }
+      e.type = 'pending';                                     // may become a snore when the next breath lands
+      out.push(e);
+      return out;
+    }
+    e.type = 'other';
+    out.push(e);
+    return out;
+  },
+
+  /* Night summary from the classified event list. snoreMin counts the 30 s
+     epochs that hold at least one confirmed snore. */
+  summarize(events, epochMs) {
+    const ep = new Set(); let coughs = 0, other = 0, fits = 0, lastC = -1e9, run = 0;
+    const P = this.P;
+    for (const e of events.slice().sort((a, b) => a.t - b.t)) {
+      if (e.type === 'snore') ep.add(Math.floor(e.t / epochMs));
+      else if (e.type === 'cough') {
+        coughs++;
+        if (e.t - lastC <= P.fitGap) { run++; if (run === P.fitMin) fits++; } else run = 1;
+        lastC = e.t;
+      } else if (e.type === 'other') other++;
+    }
+    return { snoreMin: +(ep.size * epochMs / 60000).toFixed(1), coughs, fits, other };
+  },
 };
 </script>
 <script>
@@ -1426,6 +1873,150 @@ const Scorer = {
 </script>
 <script>
 /* ============================================================================
+   CLIPS — short recordings of detected events, only if you switched them on
+   IndexedDB 'smallhours-audio', on this phone only, never uploaded and never
+   in an export. Each clip is a 16-bit mono 8 kHz WAV, at most 4 s. Per night
+   at most 10 coughs, 10 snores and 5 other sounds are kept (the loudest win),
+   and clips from all but the last 7 nights are deleted automatically.
+   ========================================================================== */
+const Clips = {
+  DB: 'smallhours-audio', CAP: { cough: 10, snore: 10, other: 5 }, NIGHTS: 7,
+  _db: null,
+  ok() { return typeof indexedDB !== 'undefined'; },
+  open() {
+    if (this._db) return Promise.resolve(this._db);
+    return new Promise((res, rej) => {
+      const r = indexedDB.open(this.DB, 1);
+      r.onupgradeneeded = () => { const s = r.result.createObjectStore('clips', { keyPath: 'id', autoIncrement: true }); s.createIndex('night', 'night'); };
+      r.onsuccess = () => { this._db = r.result; this._db.onversionchange = () => { try { this._db.close(); } catch (_) {} this._db = null; }; res(this._db); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  async _tx(mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const tx = db.transaction('clips', mode), st = tx.objectStore('clips');
+      let out; const r = fn(st); if (r) r.onsuccess = () => { out = r.result; };
+      tx.oncomplete = () => res(out); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+    });
+  },
+  all() { return this._tx('readonly', st => st.getAll()).then(a => a || []); },
+  async list(night) { return (await this.all()).filter(c => c.night === night).sort((a, b) => a.t - b.t); },
+  remove(id) { return this._tx('readwrite', st => st.delete(id)); },
+  async relabel(id, type) {
+    const c = await this._tx('readonly', st => st.get(id)); if (!c) return null;
+    c.was = c.was || c.type; c.type = type;
+    await this._tx('readwrite', st => st.put(c)); return c;
+  },
+  wav(pcm, sr) {
+    const n = pcm.length, b = new ArrayBuffer(44 + n * 2), v = new DataView(b);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    w(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, pcm[i], true);
+    return b;
+  },
+  async save({ t, type, peak, dur, night, sr, pcm }) {
+    if (!this.ok()) return;
+    const kind = type === 'cough' || type === 'snore' ? type : 'other';
+    const same = (await this.list(night)).filter(c => c.type === kind);
+    if (same.length >= this.CAP[kind]) {
+      const quiet = same.sort((a, b) => a.peak - b.peak)[0];
+      if (quiet.peak >= peak) return;                        // louder ones already kept
+      await this.remove(quiet.id);
+    }
+    await this._tx('readwrite', st => st.add({ t, type: kind, peak, dur, night, sr, wav: this.wav(pcm, sr), secs: +(pcm.length / sr).toFixed(2) }));
+    this.saved = (this.saved || 0) + 1;
+  },
+  /* keep only the most recent NIGHTS nights' clips */
+  async prune() {
+    if (!this.ok()) return 0;
+    const all = await this.all();
+    const nights = [...new Set(all.map(c => c.night))].sort((a, b) => b - a);
+    const keep = new Set(nights.slice(0, this.NIGHTS));
+    let n = 0; for (const c of all) if (!keep.has(c.night)) { await this.remove(c.id); n++; }
+    return n;
+  },
+  wipe() {
+    if (!this.ok()) return Promise.resolve();
+    if (this._db) { try { this._db.close(); } catch (_) {} this._db = null; }
+    return new Promise(res => { const r = indexedDB.deleteDatabase(this.DB); r.onsuccess = r.onerror = r.onblocked = () => res(); });
+  },
+};
+
+/* ============================================================================
+   PATTERNS — what several nights say that one night cannot
+   Pure: a list of saved nights in, plain sentences out. Needs five nights.
+   ========================================================================== */
+const Patterns = {
+  MIN: 5,
+  /* clock minutes measured from 18:00, so a 23:30 and a 00:30 bedtime sit an hour apart, not 23 */
+  _eve(ts) { const d = new Date(ts); return (d.getHours() * 60 + d.getMinutes() - 1080 + 1440) % 1440; },
+  _sd(a) { if (a.length < 2) return 0; const m = a.reduce((s, v) => s + v, 0) / a.length; return Math.sqrt(a.reduce((s, v) => s + (v - m) * (v - m), 0) / (a.length - 1)); },
+  _mean(a) { return a.length ? a.reduce((s, v) => s + v, 0) / a.length : null; },
+  _clock(eveMin) { const m = Math.round(eveMin + 1080) % 1440; return `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`; },
+  compute(nights) {
+    const ns = (nights || []).filter(n => n && n.bedAt && n.wakeAt && n.wakeAt > n.bedAt).sort((a, b) => a.bedAt - b.bedAt);
+    if (ns.length < this.MIN) return { enough: false, have: ns.length, need: this.MIN - ns.length };
+    const bed = ns.map(n => this._eve(n.bedAt)), wake = ns.map(n => this._eve(n.wakeAt));
+    const mid = ns.map(n => this._eve(n.midSleep || (n.bedAt + n.wakeAt) / 2));
+    const out = { enough: true, have: ns.length, lines: [] };
+    out.sdBed = Math.round(this._sd(bed)); out.sdWake = Math.round(this._sd(wake)); out.sdMid = Math.round(this._sd(mid));
+    const steady = v => v <= 30 ? 'steady' : v <= 60 ? 'fairly steady' : 'irregular';
+    out.lines.push(`Bedtime varies by about ${out.sdBed} minutes night to night (${steady(out.sdBed)}), usually around ${this._clock(this._mean(bed))}. Wake time varies by ${out.sdWake} minutes, the middle of your sleep by ${out.sdMid}.`);
+    /* social jet lag: nights ending on a Saturday or Sunday morning vs the rest */
+    const we = [], wd = [];
+    ns.forEach((n, i) => { const d = new Date(n.wakeAt).getDay(); (d === 0 || d === 6 ? we : wd).push(mid[i]); });
+    if (we.length >= 1 && wd.length >= 2) {
+      out.jetLag = Math.round(this._mean(we) - this._mean(wd));
+      const a = Math.abs(out.jetLag);
+      out.lines.push(a < 20 ? 'Weekends and weekdays run on nearly the same clock — no real social jet lag.'
+        : `On weekends the middle of your sleep is ${a} minutes ${out.jetLag > 0 ? 'later' : 'earlier'} than on weekdays. That shift is sometimes called social jet lag; under an hour is common.`);
+    } else out.lines.push('Weekday vs weekend needs at least one weekend night and two weekday nights.');
+    /* sound trends: first half vs second half of the nights that had sound */
+    const snd = ns.filter(n => n.hadAudio || n.soundMode);
+    const snoreOf = n => n.snoreMinDet != null ? n.snoreMinDet : (n.snoreMinutes || 0);
+    if (snd.length >= 4) {
+      const h = Math.floor(snd.length / 2), A = snd.slice(0, h), B = snd.slice(h);
+      const sa = this._mean(A.map(snoreOf)), sb = this._mean(B.map(snoreOf));
+      out.snoreAvg = Math.round(this._mean(snd.map(snoreOf)));
+      const trend = (a, b, unit) => Math.abs(b - a) < Math.max(2, 0.2 * Math.max(a, b)) ? 'roughly flat' : b > a ? `up, from about ${Math.round(a)} to ${Math.round(b)} ${unit}` : `down, from about ${Math.round(a)} to ${Math.round(b)} ${unit}`;
+      out.lines.push(`Snoring averages ${out.snoreAvg} minutes a night; recent nights are ${trend(sa, sb, 'minutes')}.`);
+      const ev = snd.filter(n => n.coughs != null);
+      if (ev.length >= 4) {
+        const k = Math.floor(ev.length / 2);
+        const ca = this._mean(ev.slice(0, k).map(n => n.coughs)), cb = this._mean(ev.slice(k).map(n => n.coughs));
+        out.coughAvg = +this._mean(ev.map(n => n.coughs)).toFixed(1);
+        out.lines.push(`Coughs average ${out.coughAvg} a night; recent nights are ${trend(ca, cb, 'a night')}.`);
+      }
+    } else out.lines.push('Sound trends need at least four nights recorded with the microphone on.');
+    /* which hour of the night sounds cluster in */
+    const hours = new Array(24).fill(0); let tot = 0;
+    for (const n of ns) for (const e of (n.soundEvents || [])) { if (e[1] === 'o') continue; hours[new Date(e[0]).getHours()]++; tot++; }
+    if (tot >= 5) {
+      const top = hours.indexOf(Math.max(...hours));
+      out.peakHour = top;
+      out.lines.push(`Coughs and snores cluster between ${pad2(top)}:00 and ${pad2((top + 1) % 24)}:00 — ${Math.round(100 * hours[top] / tot)}% of them, across ${ns.filter(n => (n.soundEvents || []).length).length} nights.`);
+    }
+    /* score vs bedtime: earlier half of bedtimes vs later half */
+    const sc = ns.map((n, i) => ({ s: n.score, b: bed[i] })).filter(x => typeof x.s === 'number');
+    if (sc.length >= 4) {
+      const sorted = sc.slice().sort((x, y) => x.b - y.b), h = Math.floor(sorted.length / 2);
+      const early = this._mean(sorted.slice(0, h).map(x => x.s)), late = this._mean(sorted.slice(sorted.length - h).map(x => x.s));
+      out.scoreEarly = Math.round(early); out.scoreLate = Math.round(late);
+      const d = Math.round(early - late);
+      out.lines.push(Math.abs(d) < 4 ? 'Your score barely changes with bedtime so far.'
+        : `Nights you went to bed earlier scored ${Math.abs(d)} points ${d > 0 ? 'higher' : 'lower'} on average (${out.scoreEarly} vs ${out.scoreLate}).`);
+    }
+    out.gp = 'None of this is a diagnosis. Persistent loud snoring with pauses in breathing, or a cough that keeps going for weeks, is worth mentioning to a GP.';
+    return out;
+  },
+};
+</script>
+<script>
+/* ============================================================================
    HYPNOGRAM — the night, drawn honestly.
    A depth curve, not crisp stage blocks: the signal does not support hard
    boundaries, so the drawing does not pretend to have them. Wake moments are
@@ -1502,7 +2093,7 @@ function drawHypnogram(canvas, night) {
    ========================================================================== */
 const App = {
   screen: 'boot',
-  settings: { alarmTime: '07:00', windowMin: 30, setupDone: false, sensors: null },
+  settings: { alarmTime: '07:00', windowMin: 30, setupDone: false, sensors: null, saveClips: false },
   session: null,          // an in-progress night, checkpointed so a reload resumes it
   night: null,            // the finished night being shown on the morning screen
   history: [],
@@ -1547,7 +2138,10 @@ const App = {
     Alarm.windowMin = canBeSmart ? this.settings.windowMin : 0;
     Alarm.armed = true;
 
+    Signal.saveClips = !!this.settings.saveClips && Clips.ok();
+    if (Signal.saveClips) Clips.prune().catch(() => {});
     await Signal.start();
+    Signal.onSound = () => this._soundTick();
     this.session = { startAt: Date.now(), target: target.getTime(), windowMin: Alarm.windowMin, epochs: [], ended: false };
     this._persistLive();
 
@@ -1560,6 +2154,8 @@ const App = {
     };
     /* independent deadline watchdog: even if no epoch lands, the alarm fires */
     clearInterval(this._loop);
+    clearInterval(this._soundLoop);
+    this._soundLoop = setInterval(() => this._soundTick(), 1000);
     this._loop = setInterval(() => {
       if (!this.session || this.session.ended) return;
       Alarm.recover();          // backstop: a wake event can be missed overnight
@@ -1588,14 +2184,16 @@ const App = {
     Alarm.silence();
     Alarm.armed = false;
     clearInterval(this._loop); this._loop = null;
+    clearInterval(this._soundLoop); this._soundLoop = null;
     const epochs = Signal.stop();
     document.body.classList.remove('tracking');
     const startAt = this.session ? this.session.startAt : Date.now() - 3600000;
     const endAt = Date.now();
 
     const { a, res, score } = Scorer.scoreNight(epochs.length ? epochs : (this.session && this.session.epochs) || [], startAt, endAt, this.baseline);
+    const snd = soundSummary(epochs.length ? epochs : (this.session && this.session.epochs) || [], Signal.events);
     const night = {
-      ...a, score, confidence: res.confidence,
+      ...a, ...snd, score, confidence: res.confidence,
       wakeAt: endAt, bedAt: startAt,
       rested: null,
       rows: res.rows.map(r => ({ key: r.key, name: r.name, value: r.value, points: +(r.points || 0).toFixed(1), skipped: r.skipped })),
@@ -1614,6 +2212,7 @@ const App = {
       midSleep: a.midSleep, coverage: +a.coverage.toFixed(2),
       hadMotion: a.hadMotion, hadAudio: a.hadAudio, snoreMinutes: a.snoreMinutes,
       depth: a.depth, states: a.states, rested: null,
+      ...snd,
     });
     this.history = await Store.recent('nights', 30);
     this.baseline = Scorer.baseline(this.history);
@@ -1629,8 +2228,44 @@ const App = {
     this.render();
   },
 
+  /* the tracking screen's sound line: dim, updated once a second, no motion */
+  _soundTick() {
+    const bar = document.getElementById('nightSound'), txt = document.getElementById('nightSoundTxt');
+    if (!bar || !txt) return;
+    if (!Signal.audioOK) { txt.textContent = Signal.audioWhy || 'Microphone off — movement only'; bar.style.transform = 'scaleX(0)'; return; }
+    const lv = Signal.frameLevel != null ? Signal.frameLevel : Signal.level;
+    const fresh = Date.now() - (Signal._heardAt || 0) < 3000;
+    bar.style.transform = `scaleX(${fresh && lv != null ? clamp((lv + 80) / 60, 0.04, 1).toFixed(2) : 0})`;
+    const ev = Signal.events || [];
+    const c = ev.filter(e => e.type === 'cough').length, k = ev.filter(e => e.type === 'snore').length;
+    txt.textContent = !fresh ? 'listening… no sound arriving yet' : Signal._worklet
+      ? `hearing the room · ${c} cough${c === 1 ? '' : 's'} · ${k} snore${k === 1 ? '' : 's'}`
+      : 'hearing the room (levels only)';
+  },
+
   render() { /* defined below */ },
 };
+
+/* Night sound fields, from the per-epoch counts (sc/sk/so, which survive a
+   reload) and the event list. soundEvents is [time, 'c'|'s'|'o'], the source
+   for the morning timeline and Patterns; other noise is capped first. */
+function soundSummary(epochs, events) {
+  const hasEv = (epochs || []).some(e => e && e.sc != null);
+  if (!hasEv) return { soundMode: (epochs || []).some(e => e && e.a != null) ? 'levels' : null };
+  let coughs = 0, snoreEp = 0, other = 0;
+  for (const e of epochs) { if (!e || e.sc == null) continue; coughs += e.sc; other += e.so; if (e.sk > 0) snoreEp++; }
+  const code = { cough: 'c', snore: 's', other: 'o' };
+  let list = (events || []).filter(e => code[e.type]).map(e => [Math.round(e.t), code[e.type]]);
+  const main = list.filter(e => e[1] !== 'o').slice(-1200), rest = list.filter(e => e[1] === 'o').slice(-(1500 - main.length));
+  list = main.concat(rest).sort((a, b) => a[0] - b[0]);
+  const fits = soundFits(list);
+  return { soundMode: 'events', coughs, coughFits: fits, snoreMinDet: +(snoreEp * EPOCH_MS / 60000).toFixed(1), otherNoises: other, soundEvents: list };
+}
+function soundFits(list) {
+  let fits = 0, run = 0, last = -1e12;
+  for (const [t, k] of list) { if (k !== 'c') continue; if (t - last <= SoundEvents.P.fitGap) { run++; if (run === SoundEvents.P.fitMin) fits++; } else run = 1; last = t; }
+  return fits;
+}
 </script>
 <script>
 /* ============================================================================
@@ -1667,6 +2302,9 @@ const ICON_PATHS = {
   dots:    '<circle cx="12" cy="5.5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="18.5" r="1.2" fill="currentColor"/>',
   install: '<rect x="6.5" y="2.5" width="11" height="19" rx="2.2"/><path d="M12 7.5v7M9 11.5l3 3 3-3"/>',
   refresh: '<path d="M19 12a7 7 0 1 1-2.1-5M19 4.5V8h-3.5"/>',
+  play:    '<path d="M8 5.5v13l10-6.5-10-6.5Z"/>',
+  mic:     '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
+  undo:    '<path d="M9 7.5 4.5 12 9 16.5M5 12h9.5a5 5 0 0 1 0 10H12"/>',
 };
 const icon = (name, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name] || ''}</svg>`;
 
@@ -1711,7 +2349,7 @@ App.view_setup = function () {
     </div>
     <div class="list">
       ${line('motion', 'Movement', r && r.motion, r && r.motion && r.motion.ok ? `about ${r.motion.rate} readings a second` : '')}
-      ${line('sound', 'Sound', r && r.audio, 'levels only — audio is never saved')}
+      ${line('sound', 'Sound', r && r.audio, 'analysed on the phone; nothing is uploaded')}
       ${line('screen', 'Screen stays awake', r && r.wake)}
     </div>
     ${r ? this._setupVerdict(r) : ''}
@@ -1728,7 +2366,7 @@ App._setupVerdict = function (r) {
   const a = r.audio && r.audio.ok;
   let head, body, extra = '';
   if (m && a)      { head = 'Everything works.'; body = 'The full thing: movement, sound, a night curve and a smart alarm that waits for a light moment.'; }
-  else if (m)      { head = 'Movement works.';   body = 'That is the one that matters. Without sound there is no snoring detection, and the night is read from movement alone.'; }
+      else if (m)      { head = 'Movement works.';   body = 'That is the one that matters. Sound did not open this time; it is tried again every time you start a night, and the Sound check on the next screen shows whether it is working.'; }
   else {
     head = 'Movement is not available here.';
     body = 'Small Hours reads your night through the mattress, so it needs a phone with a motion sensor, the page open in the browser over HTTPS, and Motion access allowed. A laptop or desktop has no motion sensor, so this result is expected there.';
@@ -1800,6 +2438,16 @@ App.view_home = function () {
       ${!motionOK ? `<p>${icon('alert', 18)}<span>No movement on this device, so tonight is a sleep log: scored on your times, with how rested you feel next to it. <button class="linkish" id="btnRecheck" style="min-height:0;padding:0">Check sensors again</button></span></p>` : ''}
     </div>
 
+    <div class="soundcheck" id="soundCheck">
+      <div class="row2"><h3>Sound check</h3><button class="btn quiet" id="btnSound" style="min-height:44px;padding:8px 16px">${icon('mic', 18)}Check</button></div>
+      <div class="meter" aria-hidden="true"><i id="soundMeter"></i></div>
+      <p class="why" id="soundWhy" role="status">${esc(this._soundMsg || 'Five seconds, before bed: make a sound — the bar should move.')}</p>
+    </div>
+
+    <button class="toggle" role="switch" aria-checked="${!!this.settings.saveClips}" id="btnClips">
+      <span class="t">Save short clips of snores and coughs — kept on this phone only</span><span class="sw" aria-hidden="true"></span>
+    </button>
+
     <div class="spacer"></div>
     <button class="btn primary wide huge" id="btnStart">${icon('moon', 22)}Start the night</button>
 
@@ -1824,6 +2472,23 @@ App.after_home = function () {
   });
   el('btnTest').onclick = async () => { await Alarm.unlock(); Alarm.test(); el('btnTest').textContent = 'Heard it? Then you are set.'; };
   el('btnStart').onclick = () => this.startNight();
+  el('btnClips').onclick = async () => { this.settings.saveClips = !this.settings.saveClips; await this.save(); el('btnClips').setAttribute('aria-checked', String(!!this.settings.saveClips)); };
+  el('btnSound').onclick = async () => {
+    const b = el('btnSound'), bar = el('soundMeter'), why = el('soundWhy');
+    b.disabled = true; why.textContent = 'Listening for five seconds — make a sound, the bar should move.';
+    let lo = 0, hi = -140;
+    const r = await Signal.soundCheck(db => {
+      if (db < lo) lo = db; if (db > hi) hi = db;
+      if (bar) bar.style.transform = `scaleX(${clamp((db + 80) / 60, 0.02, 1).toFixed(2)})`;
+    }, 5000);
+    if (bar) bar.style.transform = 'scaleX(0)';
+    b.disabled = false;
+    this._soundMsg = !r.ok ? r.why
+      : r.range >= 12 ? `Working. The room sat near ${r.min} dB and your sound reached ${r.max} dB — tonight will hear it.`
+      : `The microphone is open but the level barely moved (${r.min} to ${r.max} dB). Try again and make a louder sound, close to the phone.`;
+    this._soundCheck = r;
+    if (el('soundWhy')) el('soundWhy').textContent = this._soundMsg;
+  };
   const hb = el('btnHistory'); if (hb) hb.onclick = () => this.go('history');
   const lb = el('btnLast'); if (lb) lb.onclick = () => { this.night = this.history[0]; this.night._res = Scorer.compute(this.night, this.baseline); this.go('morning'); };
   const rb = el('btnRecheck'); if (rb) rb.onclick = () => this.go('setup');
@@ -1860,6 +2525,7 @@ App.view_tracking = function () {
       <p class="night-clock" id="nightClock">${hhmm(s.startAt)} — 0h 00m</p>
       <p class="night-line">${s.windowMin > 0 ? `Waking you by ${pad2(t.getHours())}:${pad2(t.getMinutes())}, from ${s.windowMin} min before` : `Alarm at ${pad2(t.getHours())}:${pad2(t.getMinutes())}`}</p>
       <p class="night-small">${s.windowMin > 0 ? 'Reading the bed' : 'Logging times'}</p>
+      <div class="night-sound" aria-live="off"><span class="nbar" aria-hidden="true"><i id="nightSound"></i></span><span class="night-small" id="nightSoundTxt" style="opacity:.8">starting the microphone…</span></div>
     </div>
     <div class="spacer"></div>
     <button class="btn wide" id="btnEnd">I'm awake — end the night</button>
@@ -1867,6 +2533,7 @@ App.view_tracking = function () {
   </div>`;
 };
 App.after_tracking = function () {
+  this._soundTick();
   let armed = false;
   const b = el('btnEnd');
   b.onclick = () => {
@@ -1934,6 +2601,7 @@ App.view_morning = function () {
       <h1>I couldn't read that night.</h1>
       <p class="lede">${esc(n.reason || 'The signal was not usable.')}</p>
       <div class="panel"><p class="caveat">No score is better than a made-up one. The times are saved — ${esc(dur(n.inBedMs))} in bed. Nothing to make up for; tonight just runs as normal.</p></div>
+      ${this._soundsPanel(n)}
       <div class="spacer"></div>
       <button class="btn primary wide" id="btnHome2">Back to tonight</button>
     </div>`;
@@ -1983,7 +2651,7 @@ App.view_morning = function () {
     ${skipped.length ? `<p class="caveat" style="margin-top:18px">Not scored yet: ${esc(skipped.map(r => r.name.toLowerCase()).join(', '))}. ${skipped.some(r => r.key === 'timing') ? 'Steadiness needs three nights before it means anything.' : ''}</p>` : ''}
     </div>
 
-    ${n.hadAudio && n.snoreMinutes >= 15 ? `<div class="panel"><h3 style="margin-bottom:6px">Sound</h3><p class="caveat">Roughly ${n.snoreMinutes} minutes of steady low-frequency sound while you were asleep — that pattern is usually snoring. Worth knowing, not worth worrying about on its own.</p></div>` : ''}
+    ${this._soundsPanel(n)}
 
     <div class="stack" style="gap:12px">
       <h2>How rested do you actually feel?</h2>
@@ -2001,6 +2669,87 @@ App.view_morning = function () {
     </div>
   </div>`;
 };
+App._soundsPanel = function (n) {
+  if (n.soundMode === 'events') {
+    const snore = Math.round(n.snoreMinDet || 0);
+    return `<div class="panel stack" style="gap:16px" id="soundsPanel">
+      <h3>Sounds</h3>
+      <div class="stat3">
+        <div><span class="v num">${snore}</span><span class="k">snore minute${snore === 1 ? '' : 's'}</span></div>
+        <div><span class="v num">${n.coughs || 0}</span><span class="k">cough${n.coughs === 1 ? '' : 's'}</span></div>
+        <div><span class="v num">${n.coughFits || 0}</span><span class="k">coughing fit${n.coughFits === 1 ? '' : 's'}</span></div>
+      </div>
+      <canvas class="sndline" id="sndline" aria-label="When in the night the sounds happened"></canvas>
+      <div class="hypno-legend"><span><i style="background:var(--deep)"></i>snore</span><span><i style="background:var(--dawn)"></i>cough</span><span><i style="background:var(--edge)"></i>other noise (${n.otherNoises || 0})</span></div>
+      <div class="clips" id="clipList"></div>
+      <p class="caveat">A snore here is a low, breath-long sound repeating at breathing pace; a cough is a short explosive burst. A phone in a dark room gets some wrong — the clips, if you saved them, let you check.</p>
+    </div>`;
+  }
+  if (n.hadAudio && n.snoreMinutes >= 15) return `<div class="panel"><h3 style="margin-bottom:6px">Sound</h3><p class="caveat">Roughly ${n.snoreMinutes} minutes of steady low-frequency sound while you were asleep — that pattern is usually snoring. Worth knowing, not worth worrying about on its own.</p></div>`;
+  return '';
+};
+function drawSoundLine(canvas, n) {
+  const cs = getComputedStyle(document.documentElement), tok = k => cs.getPropertyValue(k).trim();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), W = canvas.clientWidth || 300, H = 54;
+  canvas.width = W * dpr; canvas.height = H * dpr; canvas.style.height = H + 'px';
+  const g = canvas.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
+  const a = n.bedAt != null ? n.bedAt : n.startAt, b = n.wakeAt != null ? n.wakeAt : n.endAt, span = Math.max(1, b - a);
+  const x = t => 2 + clamp((t - a) / span, 0, 1) * (W - 4);
+  g.fillStyle = tok('--line'); g.fillRect(0, 30, W, 1);
+  const rows = { s: [12, tok('--deep')], c: [22, tok('--dawn')], o: [34, tok('--edge')] };
+  for (const [t, k] of (n.soundEvents || [])) { const r = rows[k]; if (!r) continue; g.fillStyle = r[1]; g.globalAlpha = k === 'o' ? .6 : .85; g.fillRect(Math.round(x(t)), r[0] - 4, 2, 8); }
+  g.globalAlpha = 1; g.fillStyle = tok('--dim'); g.font = '11px "IBM Plex Sans", sans-serif'; g.textAlign = 'center';
+  const hours = Math.max(1, Math.round(span / 3600000)), step = hours > 6 ? 2 : 1;
+  for (let h = 0; h <= hours; h += step) { const t = a + h * 3600000; if (t > b) break; const px = x(t); if (px > 14 && px < W - 14) g.fillText(hhmm(t), px, H - 2); }
+}
+App._renderClips = async function (n) {
+  const box = el('clipList'); if (!box || !Clips.ok()) return;
+  let list = [];
+  /* clips carry the recorder's own start stamp, a few ms off bedAt: match
+     by the night's time span instead */
+  try { list = (await Clips.all()).filter(c => c.t >= n.bedAt - 60000 && c.t <= (n.wakeAt || Date.now()) + 60000).sort((a, b) => a.t - b.t); } catch (_) { return; }
+  if (!list.length) { box.innerHTML = this.settings.saveClips ? '<p class="caveat">No clips were saved last night.</p>' : ''; return; }
+  const label = c => c.type === 'cough' ? 'Cough' : c.type === 'snore' ? 'Snore' : 'Other noise';
+  box.innerHTML = `<h3 style="font-size:15px;margin-bottom:4px">Clips on this phone (${list.length})</h3>` + list.map(c => `<div class="clip" data-id="${c.id}">
+      <button class="iconbtn play" data-play="${c.id}" aria-label="Play the ${esc(label(c).toLowerCase())} at ${esc(hhmm(c.t))}">${icon('play', 18)}</button>
+      <span style="display:flex;flex-direction:column;min-width:0"><span class="when num">${esc(hhmm(c.t))} · ${esc(label(c))}</span><span class="what">${esc(c.secs)} s${c.was ? ` · was ${esc(c.was)}` : ''}</span></span>
+      <span class="acts">${c.type !== 'other' ? `<button class="iconbtn" data-relabel="${c.id}" aria-label="Not a ${esc(c.type)}">${icon('undo', 16)}not a ${esc(c.type)}</button>` : ''}<button class="iconbtn" data-del="${c.id}" aria-label="Delete this clip">${icon('trash', 16)}</button></span>
+    </div>`).join('');
+  box.querySelectorAll('[data-play]').forEach(btn => btn.onclick = () => {
+    const c = list.find(x => x.id === +btn.dataset.play); if (!c) return;
+    if (this._clipAudio) { try { this._clipAudio.pause(); URL.revokeObjectURL(this._clipAudio.src); } catch (_) {} }
+    const au = this._clipAudio = new Audio(URL.createObjectURL(new Blob([c.wav], { type: 'audio/wav' })));
+    au.setAttribute('playsinline', ''); au.id = 'clipAudio';
+    const p = au.play(); if (p && p.catch) p.catch(() => {});
+  });
+  box.querySelectorAll('[data-del]').forEach(btn => btn.onclick = async () => { await Clips.remove(+btn.dataset.del); this._renderClips(n); });
+  box.querySelectorAll('[data-relabel]').forEach(btn => btn.onclick = async () => {
+    const c = await Clips.relabel(+btn.dataset.relabel, 'other');
+    if (c) await this._relabelNight(n, c);
+    this._renderClips(n);
+  });
+};
+/* "not a snore/cough": move that event to other noise in the saved night */
+App._relabelNight = async function (n, c) {
+  const key = dayKey(n.wakeAt), doc = await Store.get(`nights/${key}`);
+  const k = c.was === 'cough' ? 'c' : 's';
+  const fix = d => {
+    if (!d || !Array.isArray(d.soundEvents)) return d;
+    let best = -1, bd = 3000;
+    d.soundEvents.forEach((e, i) => { if (e[1] === k && Math.abs(e[0] - c.t) < bd) { bd = Math.abs(e[0] - c.t); best = i; } });
+    if (best < 0) return d;
+    d.soundEvents[best] = [d.soundEvents[best][0], 'o'];
+    d.otherNoises = (d.otherNoises || 0) + 1;
+    if (k === 'c') { d.coughs = Math.max(0, (d.coughs || 0) - 1); d.coughFits = soundFits(d.soundEvents); }
+    else { const ep = new Set(d.soundEvents.filter(e => e[1] === 's').map(e => Math.floor(e[0] / EPOCH_MS))); d.snoreMinDet = +(ep.size * EPOCH_MS / 60000).toFixed(1); }
+    return d;
+  };
+  fix(n);
+  if (doc) await Store.set(`nights/${key}`, fix(doc));
+  this.history = await Store.recent('nights', 30);
+  const sp = el('soundsPanel');
+  if (sp) { sp.outerHTML = this._soundsPanel(n); const c2 = el('sndline'); if (c2) drawSoundLine(c2, n); }
+};
 App._restedNote = function (score, rested) {
   const felt = rested * 25 - 12;             // 13 / 38 / 63 / 88
   const gap = score - felt;
@@ -2011,6 +2760,9 @@ App._restedNote = function (score, rested) {
 App.after_morning = function () {
   const c = el('hypno');
   if (c) { drawHypnogram(c, this.night); window.addEventListener('resize', () => drawHypnogram(c, this.night), { once: true }); }
+  const sl = el('sndline');
+  if (sl) drawSoundLine(sl, this.night);
+  if (this.night && this.night.soundMode === 'events') this._renderClips(this.night);
   const row = el('restedRow');
   if (row) row.querySelectorAll('button').forEach(btn => { btn.onclick = () => this.setRested(btn.dataset.r); });
   const h = el('btnHome2'); if (h) h.onclick = () => this.go('home');
@@ -2020,6 +2772,7 @@ App.after_morning = function () {
 /* --- history ------------------------------------------------------------- */
 App.view_history = function () {
   const hs = this.history.filter(n => n && n.wakeAt);
+  this._patternsFor = hs;
   const b = this.baseline || { nights: 0 };
   if (!hs.length) return `<div class="screen on">${this._bar(this._backBtn())}<h1>No nights yet.</h1><p class="lede">The first one lands here tomorrow morning.</p><div class="spacer"></div><button class="btn primary wide" id="btnBack2">Back to tonight</button></div>`;
 
@@ -2044,6 +2797,7 @@ App.view_history = function () {
       <div class="chart" role="img" aria-label="Scores for the last ${recent.length} nights">${avgLine}${cols}</div>
       <div class="key"><span><i style="background:var(--good)"></i>72 and up</span><span><i style="background:var(--dawn)"></i>58–71</span><span><i style="background:var(--bad)"></i>under 58</span></div>
     </div>
+    ${this._patternsPanel(hs)}
     <div class="list">
       ${hs.map(n => `<button class="night-row" data-day="${esc(n.id || '')}">
         <span style="display:flex;flex-direction:column;min-width:0">
@@ -2056,6 +2810,13 @@ App.view_history = function () {
     </div>
     <button class="btn primary wide" id="btnBack2">Back to tonight</button>
   </div>`;
+};
+App._patternsPanel = function (hs) {
+  const p = Patterns.compute(hs);
+  if (!p.enough) return `<div class="panel" id="patterns"><h3 style="margin-bottom:6px">Patterns</h3><p class="caveat">Patterns across nights start after ${Patterns.MIN} nights — ${p.need} more to go.</p></div>`;
+  return `<div class="panel patterns" id="patterns"><h3 style="margin-bottom:12px">Patterns, across ${p.have} nights</h3>
+    ${p.lines.map(l => `<p class="caveat" style="color:var(--ink)">${esc(l)}</p>`).join('')}
+    <p class="caveat">${esc(p.gp)}</p></div>`;
 };
 App.after_history = function () {
   el('btnBack').onclick = () => this.go('home');
@@ -2094,6 +2855,9 @@ function cleanNight(n) {
     estimated: n.estimated === true, efficiency: num(n.efficiency), deepMs: num(n.deepMs),
     deepShare: num(n.deepShare), midSleep: num(n.midSleep), coverage: num(n.coverage) || 0,
     hadMotion: n.hadMotion === true, hadAudio: n.hadAudio === true, snoreMinutes: num(n.snoreMinutes) || 0,
+    soundMode: n.soundMode === 'events' || n.soundMode === 'levels' ? n.soundMode : null,
+    coughs: num(n.coughs), coughFits: num(n.coughFits), snoreMinDet: num(n.snoreMinDet), otherNoises: num(n.otherNoises),
+    soundEvents: Array.isArray(n.soundEvents) ? n.soundEvents.slice(0, 1500).filter(e => Array.isArray(e) && num(e[0]) != null && ['c', 's', 'o'].includes(e[1])).map(e => [e[0], e[1]]) : [],
     depth: Array.isArray(n.depth) ? n.depth.slice(0, 4000).map(v => clamp(num(v) || 0, 0, 1)) : [],
     states: Array.isArray(n.states) ? n.states.slice(0, 4000).map(v => (STATES.has(v) ? v : 'restless')) : [],
     rested: ['1', '2', '3', '4', 1, 2, 3, 4].includes(n.rested) ? String(n.rested) : null,
@@ -2135,13 +2899,13 @@ App.view_data = function () {
     ${this._bar(this._backBtn())}
     <div class="stack" style="gap:14px">
       <h1>Your data stays on this device.</h1>
-      <p class="lede">Nights are kept in this browser's storage and are never uploaded. To move them to another phone or browser, export a file here and import it there. Clearing this site's data in the browser deletes them — exporting now and then is the backup.</p>
+      <p class="lede">Nights are kept in this browser's storage. Sound is analysed on the phone and nothing is ever uploaded. If, and only if, the clip switch is on, short clips of detected snores, coughs and noises are stored on this phone and deleted automatically after 7 nights. To move your nights to another phone or browser, export a file here and import it there. Clearing this site's data in the browser deletes them — exporting now and then is the backup.</p>
     </div>
     ${msg ? `<div class="panel warm note" role="status" id="dataMsg">${icon('data')}<p style="color:var(--ink-strong)">${esc(msg)}</p></div>` : ''}
     <div class="list">
       <div class="item">${icon('download')}<div class="grow stack" style="gap:10px">
         <h3>Export</h3>
-        <p class="caveat">A JSON file with every saved night: times, the score and its parts, the night curve and how rested you said you felt. No audio — none is ever kept.</p>
+        <p class="caveat">A JSON file with every saved night: times, the score and its parts, the night curve, snore minutes, cough counts and when they happened, and how rested you said you felt. Sound clips are never exported — they stay on this phone.</p>
         <button class="btn quiet wide" id="btnExport">Export nights (${this.history.length ? 'JSON' : 'nothing saved yet'})</button>
       </div></div>
       <div class="item">${icon('upload')}<div class="grow stack" style="gap:10px">
@@ -2163,7 +2927,7 @@ App.view_data = function () {
 
     <div class="stack" style="gap:10px">
       <h3>Delete</h3>
-      <p class="caveat">Removes every night and setting from this browser. Export first if you want to keep them.</p>
+      <p class="caveat">Removes every night, setting and saved sound clip from this browser. Export first if you want to keep the nights.</p>
       <button class="btn quiet danger wide" id="btnWipe">${icon('trash', 18)}Delete everything</button>
     </div>
     <div class="spacer"></div>
@@ -2200,8 +2964,8 @@ App.after_data = function () {
     if (!armed) { armed = true; b.textContent = 'Tap again to delete everything'; setTimeout(() => { armed = false; if (el('btnWipe')) el('btnWipe').innerHTML = `${icon('trash', 18)}Delete everything`; }, 4000); return; }
     for (const k of Store.keys()) { try { localStorage.removeItem(k); } catch (_) {} }
     this.history = []; this.baseline = Scorer.baseline([]);
-    this.settings = { alarmTime: '07:00', windowMin: 30, setupDone: false, sensors: null };
-    this.go('setup');
+    this.settings = { alarmTime: '07:00', windowMin: 30, setupDone: false, sensors: null, saveClips: false };
+    Clips.wipe().then(() => this.go('setup'), () => this.go('setup'));
   };
 };
 

@@ -1,11 +1,13 @@
 /* Small Hours service worker — caches the app shell so the page opens offline.
    Bump VERSION whenever any file in SHELL changes; the old cache is dropped on
-   activate. It never sees your data: nights live in localStorage, which a
-   service worker cannot read, and nothing is ever sent anywhere. */
-const VERSION = 'small-hours-v1.1.0';
+   activate. It never sees your data: nights live in localStorage and sound
+   clips (only if switched on) in IndexedDB, neither of which this worker
+   touches, and nothing is ever sent anywhere. */
+const VERSION = 'small-hours-v1.2.0';
 const SHELL = [
   './',
   './index.html',
+  './sound-worklet.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

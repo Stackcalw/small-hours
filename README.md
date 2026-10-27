@@ -23,10 +23,20 @@ night**. Body movement reaches the phone as vibration through the mattress.
 
 - **Movement** is reduced to one activity figure (mean and peak) per 30-second
   epoch.
-- **Sound**, if you allow the microphone, is reduced to the loudness of each
-  epoch (mean and peak dBFS) and the energy in the 60–500 Hz band where snoring
-  sits. Sound is used only to flag likely snoring; it never decides whether you
-  were asleep.
+- **Sound**, if you allow the microphone, goes two ways. An analyser gives each
+  epoch's loudness (mean and peak dBFS) and 60–500 Hz band energy. An
+  `AudioWorklet` (`docs/sound-worklet.js`) reduces every 50 ms to a few numbers
+  (loudness, low/high band, six-band spectrum, zero crossings, voicing), and
+  `SoundEvents` turns those into **coughs, snores and other noise**: an adaptive
+  floor (the quiet 10th percentile of the last minute), events that rise 10 dB
+  over it, and two small classifiers (60 boosted decision stumps each, fitted
+  on ESC-50 folds 1–3). Coughs are counted, and two or more within 10 s make a
+  coughing fit. A snore
+  must also *repeat at breathing pace* — one snore-like sound alone is not
+  called a snore. Sound never decides whether you were asleep.
+- **Patterns** (on the history screen, from five nights) — bedtime and wake-time
+  regularity, weekday vs weekend shift, snoring and cough trends, the hour sounds
+  cluster in, and score vs bedtime. Descriptive only; not a diagnosis.
 - The epochs go through a Cole–Kripke-shaped weighted window with a threshold set
   from the night itself, then Webster-style rescoring (stillness right after a
   long wake is not yet sleep). The result is a curve of **Awake / Restless /
@@ -85,17 +95,26 @@ most points.
 Everything stays on the device. There are no accounts, no analytics and no
 server. Checked in the code:
 
-- **Audio is never recorded.** The web app connects the microphone only to a Web
-  Audio `AnalyserNode` (never to the speakers, never to a `MediaRecorder`) and
-  reads it four times a second; each read is reduced to a few numbers and
-  discarded. The iOS app does the same inside the `AVAudioEngine` tap callback.
-  No audio buffer is kept, written to disk or sent anywhere.
+- **Audio is analysed on the phone; nothing is ever uploaded.** The page has no
+  network code at all. The microphone feeds a Web Audio analyser and an
+  `AudioWorklet`, both reduced to a few numbers per moment and discarded. The
+  graph ends in a gain of 0 (Safari only runs a graph that reaches the
+  speakers, but nothing is audible) and there is no `MediaRecorder`.
+- **If, and only if, the clip switch is on** ("Save short clips of snores and
+  coughs — kept on this phone only", off by default), short clips of detected
+  events (0.5 s before to 1 s after, at most 4 s, 8 kHz mono WAV) are stored on
+  the phone in this browser's IndexedDB (`smallhours-audio`) and **auto-deleted
+  after 7 nights**. At most 10 coughs, 10 snores and 5 other noises a night
+  (the loudest kept). Clips are never in the JSON export. Delete one from the
+  morning screen; *Delete everything* deletes them all. The iOS app keeps no
+  audio.
 - **What is stored — web** (`localStorage`, keys starting with `smallhours:`):
   - `smallhours:meta/settings` — alarm time, wake window, the sensor check result;
   - `smallhours:nights/YYYY-MM-DD` — one record per night: bed and wake times,
     score and confidence, sleep time, efficiency, latency, wake-ups, minutes
     awake, share of settled sleep, middle-of-sleep time, data coverage, minutes
-    of likely snoring, the per-epoch curve (Awake / Restless / Settled and a 0–1
+    of likely snoring, cough/snore/noise counts with their times (no audio),
+    the per-epoch curve (Awake / Restless / Settled and a 0–1
     stillness value) and your "how rested" answer;
   - `smallhours:live` — while a night is running, the raw epochs (per 30 s:
     movement mean/peak, sound level mean/peak, 60–500 Hz band energy), so a
@@ -160,6 +179,43 @@ node test/scorer.check.mjs
 It loads the engine straight out of `docs/index.html` and checks that a good
 synthetic night outscores a broken one, that an unreadable and a too-short night
 get no score, and that a times-only night is capped.
+
+**Testing the sound detector.** `test/sound.check.mjs` runs the shipped worklet
+DSP (`docs/sound-worklet.js`) and the `SoundEvents` block sliced out of
+`docs/index.html` on real recordings from
+[ESC-50](https://github.com/karolpiczak/ESC-50) (CC BY-NC 3.0, **not** in this
+repo): coughing and snoring against 16 other classes (breathing, sneezing,
+laughing, dog, footsteps, doors, rain, clocks, typing…). Each clip is scaled so
+its loudest 50 ms sits at −35 dBFS over a −60 dBFS pink-noise room at 48 kHz;
+the snore test plays each clip four times in a row (a snore must repeat), and
+every negative class gets the same treatment. It also plants held-out clips in
+a simulated 40-minute night.
+
+```bash
+mkdir -p /tmp/esc50/audio && cd /tmp/esc50
+curl -sLO https://raw.githubusercontent.com/karolpiczak/ESC-50/master/meta/esc50.csv
+# the 18 classes the test uses (40 clips each) into audio/:
+awk -F, 'NR>1 && $4 ~ /^(coughing|snoring|breathing|sneezing|laughing|door_wood_knock|footsteps|clock_tick|rain|keyboard_typing|car_horn|dog|door_wood_creaks|clapping|mouse_click|drinking_sipping|cat|clock_alarm)$/ {print $1}' esc50.csv \
+  | xargs -P 8 -I{} curl -sSfL -o audio/{} https://raw.githubusercontent.com/karolpiczak/ESC-50/master/audio/{}
+cd - && node test/sound.check.mjs   # a few minutes, one worker per core
+```
+
+The model was fitted on folds 1–3 only; folds 4–5 were never used for fitting
+or tuning. **Held-out (folds 4–5, 16 clips per class):** coughs caught in
+**69%** of cough clips (target 80% — missed), snores in **63%** of snore clips
+(target 70% — missed); of the 16 other classes, **13.3%** of clips fire a false
+cough (target ≤10% — missed; sneezes, laughs, barks and car horns are the usual
+culprits) and **1.6%** a false snore (met). Treat the counts as a trend across
+nights, not a per-event truth — the clips, if you save them, let you check, and
+"not a snore / not a cough" corrects the night.
+
+**Microphone on phones.** The app asks for a raw track (no echo cancelling,
+noise suppression or gain control, which would erase snoring). If that track
+carries only digital zeros for four seconds — some devices do this — it reopens
+the microphone with the browser's defaults; the Sound check on the setup screen
+does the same and remembers which worked. On iPhone the graph shares the
+alarm's `AudioContext`, is resumed after interruptions, and is pulled through a
+silent gain so WebKit actually runs it.
 
 **Icons.** `python3 tools/make_icons.py` regenerates `docs/icons/` (needs Pillow).
 
