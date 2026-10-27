@@ -2,7 +2,7 @@
    Bump VERSION whenever any file in SHELL changes; the old cache is dropped on
    activate. It never sees your data: nights live in localStorage, which a
    service worker cannot read, and nothing is ever sent anywhere. */
-const VERSION = 'small-hours-v1.0.1';
+const VERSION = 'small-hours-v1.1.0';
 const SHELL = [
   './',
   './index.html',
@@ -10,8 +10,9 @@ const SHELL = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
+  './fonts/fraunces-opsz.woff2',
+  './fonts/ibm-plex-sans-wght.woff2',
 ];
-const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -40,11 +41,12 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  /* Same-origin shell files and the web fonts: cache first. */
-  if (url.origin === self.location.origin || FONT_HOSTS.includes(url.hostname)) {
+  /* Same-origin shell files and the self-hosted fonts: cache first. The app
+     makes no third-party requests, so anything else is left alone. */
+  if (url.origin === self.location.origin) {
     e.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-        if (res.ok || res.type === 'opaque') { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); }
+        if (res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); }
         return res;
       }))
     );

@@ -105,10 +105,11 @@ server. Checked in the code:
   Support directory with the same kind of night metrics and curve as the web app,
   plus `session.json`, which holds the raw epochs of a night in progress and is
   deleted when the night ends.
-- **Network:** the iOS app makes no network requests. The web app's only network
-  requests are the page itself and its Google Fonts stylesheet and font files
-  (fonts.googleapis.com / fonts.gstatic.com); remove the three font `<link>` tags
-  in `docs/index.html` to drop those, and it falls back to system fonts.
+- **Network:** the iOS app makes no network requests. The web app makes no
+  third-party requests at all: the page, its two fonts (Fraunces and IBM Plex
+  Sans, self-hosted in `docs/fonts/` under the SIL Open Font License), its icons
+  and its manifest all come from the same origin, and the service worker caches
+  them so it opens offline.
 - **Export / import:** "Your data" on the web app's home screen exports every
   night to a JSON file and imports one on another device (merging; a night
   already on the device wins). It also has *Delete everything*. Clearing the

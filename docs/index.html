@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Small Hours</title>
 <meta name="description" content="A sleep tracker for a phone lying on the mattress. Movement and sound in, one honest score out. Everything stays on your device.">
-<meta name="theme-color" content="#0A0D14">
+<meta name="theme-color" content="#100D0B">
 <meta name="color-scheme" content="dark light">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -14,92 +14,118 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="preload" href="fonts/fraunces-opsz.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/ibm-plex-sans-wght.woff2" as="font" type="font/woff2" crossorigin>
 
 <style>
 /* ============================================================================
    SMALL HOURS — tokens
-   Dark-committed by design: this app is operated in a dark bedroom at 2am and
-   again at 7am. The night palette is the :root default; light is the override.
+   Lamplight. The app is used in a dark bedroom at 2am and again at 7am, so the
+   night palette is the default: a warm near-black ground, parchment ink and one
+   candle-amber accent, with no blue anywhere near the bedtime screens. Sage
+   marks settled sleep. Light is the morning override.
+
+   Palette (Realtime Colors roles, ~60 / 30 / 10):
+     text #EDE3D4 · background #100D0B · primary #E9A863
+     secondary #25201B (raised surfaces) · accent #9DB5A6 (settled sleep)
+   Contrast, WCAG 2.x, against the background unless noted:
+     ink 15.25 · ink-strong 16.83 · dim 7.05 (5.88 on surface-2) · amber 9.45
+     sage 8.85 · rust 7.22 · button ink on amber 9.00 · control edge 3.19
+     tracking screen, on #000: text #9C6B45 4.60, large text/edges #7E5A3C 3.41
+   Light (morning): ink 14.85 · dim 5.64 (5.06 on surface-2) · amber 5.51
+     sage 5.68 · rust 5.60 · button ink on amber 5.99 · control edge 3.11
    ========================================================================== */
+@font-face {
+  font-family: "Fraunces";
+  src: url("fonts/fraunces-opsz.woff2") format("woff2");
+  font-weight: 100 900; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("fonts/ibm-plex-sans-wght.woff2") format("woff2");
+  font-weight: 100 700; font-style: normal; font-display: swap;
+}
+
 :root {
-  --bg:          #0A0D14;   /* near-black, blue-biased */
+  --bg:          #100D0B;   /* warm near-black: no blue light at bedtime */
   --bg-deep:     #000000;   /* tracking screen only — emits nothing on OLED */
-  --surface:     #151B27;
-  --surface-2:   #1D2534;
-  --ink:         #C6CEDC;   /* never pure white; too hot in a dark room */
-  --ink-strong:  #E4E9F1;
-  --dim:         #5F6B7E;
-  --line:        #232C3C;
+  --surface:     #1A1613;
+  --surface-2:   #25201B;
+  --ink:         #EDE3D4;   /* parchment, never pure white */
+  --ink-strong:  #F6EEE2;
+  --dim:         #A89A89;
+  --line:        #2E2721;   /* quiet dividers, decorative only */
+  --edge:        #6E6052;   /* control boundaries, 3:1 */
 
-  --dawn:        #E8A15C;   /* sunrise amber — the accent */
-  --dawn-soft:   #3A2A1B;
-  --dawn-ink:    #1A1206;
-  --deep:        #6E7DE0;   /* indigo — deep sleep. The one saturated note. */
-  --deep-soft:   #1E2440;
+  --dawn:        #E9A863;   /* candle amber — the one accent */
+  --dawn-soft:   #3A2A1A;
+  --dawn-ink:    #1C1206;
+  --deep:        #9DB5A6;   /* sage — settled sleep */
+  --deep-soft:   #1F2622;
 
-  --good:        #4FA97C;
-  --warn:        #C9873F;
-  --bad:         #B4574A;
+  --good:        #9DB5A6;
+  --warn:        #E9A863;
+  --bad:         #E58467;
 
-  --shadow:      0 1px 2px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.45);
+  --night-ink:   #9C6B45;   /* tracking text: 4.6:1 on black and no brighter */
+  --night-low:   #7E5A3C;   /* tracking large text and edges: 3.4:1 */
+
   --display:     "Fraunces", Georgia, "Times New Roman", serif;
   --body:        "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --mono:        "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --mono:        var(--body);
 
-  --r:           14px;
+  --spring:      linear(0, 0.083, 0.269, 0.487, 0.69, 0.853, 0.969, 1.04, 1.075, 1.083, 1.076, 1.06, 1.042, 1.025, 1.011, 1.002, 0.996, 0.994, 0.993, 0.994, 0.995, 0.997, 0.998, 0.999, 1);
+  --settle:      linear(0, 0.059, 0.191, 0.349, 0.505, 0.643, 0.756, 0.843, 0.908, 0.953, 0.982, 1, 1.01, 1.014, 1.015, 1.012, 1.007, 1.003, 1.001, 1);
+
+  --r:           16px;
   --pad:         20px;
   color-scheme:  dark;
 }
 
-/* Light — for a 7am wake-up on a phone set to light mode. A pale dawn ground. */
+/* Light — a 7am wake-up on a phone set to light mode. Unbleached paper. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg:        #F4F1EC;
-    --bg-deep:   #000000;
-    --surface:   #FFFFFF;
-    --surface-2: #EBE7E0;
-    --ink:       #1B2029;
-    --ink-strong:#0C1017;
-    --dim:       #6B7280;
-    --line:      #DCD6CC;
-    --dawn:      #A8641F;
-    --dawn-soft: #F7E7D4;
-    --dawn-ink:  #FFFFFF;
-    --deep:      #3F4BAE;
-    --deep-soft: #E1E3F6;
-    --good:      #2F7A56;
-    --warn:      #8A5A18;
-    --bad:       #97382C;
-    --shadow:    0 1px 2px rgba(20,24,32,.06), 0 8px 24px rgba(20,24,32,.08);
+    --bg:        #F4EFE7;
+    --surface:   #FBF8F3;
+    --surface-2: #EAE3D8;
+    --ink:       #221B15;
+    --ink-strong:#120E0A;
+    --dim:       #6A5C4E;
+    --line:      #E2D9CC;
+    --edge:      #94857A;
+    --dawn:      #8C520F;
+    --dawn-soft: #F3E2CC;
+    --dawn-ink:  #FFF8EF;
+    --deep:      #3F6650;
+    --deep-soft: #DCE6DF;
+    --good:      #3F6650;
+    --warn:      #8C520F;
+    --bad:       #A23F27;
     color-scheme: light;
   }
 }
 :root[data-theme="light"] {
-  --bg:        #F4F1EC;
-  --bg-deep:   #000000;
-  --surface:   #FFFFFF;
-  --surface-2: #EBE7E0;
-  --ink:       #1B2029;
-  --ink-strong:#0C1017;
-  --dim:       #6B7280;
-  --line:      #DCD6CC;
-  --dawn:      #A8641F;
-  --dawn-soft: #F7E7D4;
-  --dawn-ink:  #FFFFFF;
-  --deep:      #3F4BAE;
-  --deep-soft: #E1E3F6;
-  --good:      #2F7A56;
-  --warn:      #8A5A18;
-  --bad:       #97382C;
-  --shadow:    0 1px 2px rgba(20,24,32,.06), 0 8px 24px rgba(20,24,32,.08);
+  --bg:        #F4EFE7;
+  --surface:   #FBF8F3;
+  --surface-2: #EAE3D8;
+  --ink:       #221B15;
+  --ink-strong:#120E0A;
+  --dim:       #6A5C4E;
+  --line:      #E2D9CC;
+  --edge:      #94857A;
+  --dawn:      #8C520F;
+  --dawn-soft: #F3E2CC;
+  --dawn-ink:  #FFF8EF;
+  --deep:      #3F6650;
+  --deep-soft: #DCE6DF;
+  --good:      #3F6650;
+  --warn:      #8C520F;
+  --bad:       #A23F27;
   color-scheme: light;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html { -webkit-text-size-adjust: 100%; height: 100%; }
+html { -webkit-text-size-adjust: 100%; height: 100%; background: var(--bg); }
 body {
   margin: 0;
   min-height: 100%;
@@ -109,124 +135,253 @@ body {
   font-size: 16px;
   line-height: 1.5;
   overscroll-behavior: none;
+  overflow-x: hidden;
+  font-variant-numeric: tabular-nums;
+  caret-color: var(--dawn);
 }
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
-}
+::selection { background: var(--dawn); color: var(--dawn-ink); }
+svg { flex: none; }
 
 /* --- app shell ----------------------------------------------------------- */
 #app {
-  max-width: 560px;
+  max-width: 520px;
   margin: 0 auto;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  padding: max(env(safe-area-inset-top), 14px) var(--pad) max(env(safe-area-inset-bottom), 18px);
-  gap: 22px;
+  padding: max(env(safe-area-inset-top), 16px) var(--pad) max(env(safe-area-inset-bottom), 20px);
 }
-.screen { display: none; flex-direction: column; gap: 22px; flex: 1; }
+.screen { display: none; flex-direction: column; gap: 24px; flex: 1; min-width: 0; }
 .screen.on { display: flex; }
 
 /* --- type ---------------------------------------------------------------- */
 h1, h2, h3 { margin: 0; font-family: var(--display); font-weight: 400; text-wrap: balance; color: var(--ink-strong); }
-h1 { font-size: 30px; line-height: 1.15; font-variation-settings: "opsz" 48, "SOFT" 20; }
-h2 { font-size: 21px; line-height: 1.2; font-variation-settings: "opsz" 32, "SOFT" 20; }
-h3 { font-size: 16px; font-family: var(--body); font-weight: 600; letter-spacing: .01em; }
+h1 { font-size: 32px; line-height: 1.08; letter-spacing: -.02em; font-optical-sizing: auto; }
+h2 { font-size: 22px; line-height: 1.15; letter-spacing: -.01em; }
+h3 { font-size: 17px; font-family: var(--body); font-weight: 600; line-height: 1.3; }
 p  { margin: 0; }
-.lede { color: var(--dim); font-size: 15px; max-width: 46ch; }
-.eyebrow {
-  font-family: var(--mono); font-size: 11px; font-weight: 500;
-  letter-spacing: .12em; text-transform: uppercase; color: var(--dim);
+strong { font-weight: 600; color: var(--ink-strong); }
+.lede { color: var(--dim); font-size: 16px; line-height: 1.55; max-width: 44ch; text-wrap: pretty; }
+.label { font-size: 13px; font-weight: 500; color: var(--dim); }
+.num { font-variant-numeric: tabular-nums; }
+.caveat { font-size: 14px; color: var(--dim); line-height: 1.5; max-width: 52ch; text-wrap: pretty; }
+
+/* --- top bar ------------------------------------------------------------- */
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.mark { display: inline-flex; align-items: center; gap: 10px; font-family: var(--display); font-size: 19px; color: var(--ink-strong); letter-spacing: -.01em; }
+.mark svg { color: var(--dawn); }
+.bar-actions { display: flex; gap: 4px; }
+.iconbtn {
+  display: inline-flex; align-items: center; gap: 8px;
+  min-height: 44px; min-width: 44px; padding: 0 12px; justify-content: center;
+  border-radius: 999px; color: var(--ink); font-size: 15px; font-weight: 500;
 }
-.num { font-variant-numeric: tabular-nums; font-family: var(--mono); }
+.iconbtn:hover { background: var(--surface); }
 
 /* --- controls ------------------------------------------------------------ */
 button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
 .btn {
   display: flex; align-items: center; justify-content: center; gap: 10px;
-  min-height: 54px; padding: 14px 20px;
-  border-radius: var(--r);
+  min-height: 56px; padding: 14px 20px;
+  border-radius: 999px;
   background: var(--surface-2); color: var(--ink-strong);
-  border: 1px solid var(--line);
-  font-weight: 500; font-size: 16px;
-  transition: transform .12s ease, background .15s ease;
+  border: 1px solid transparent;
+  font-weight: 500; font-size: 16px; line-height: 1.2; text-align: center;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
 }
-.btn:active { transform: scale(.985); }
-.btn.primary { background: var(--dawn); color: var(--dawn-ink); border-color: transparent; font-weight: 600; }
-.btn.quiet   { background: none; border-color: var(--line); color: var(--dim); min-height: 46px; font-size: 15px; }
+.btn:hover { background: color-mix(in srgb, var(--surface-2) 86%, var(--ink)); }
+.btn.primary { background: var(--dawn); color: var(--dawn-ink); font-weight: 600; }
+.btn.primary:hover { background: color-mix(in srgb, var(--dawn) 90%, var(--ink-strong)); }
+.btn.quiet   { background: none; border-color: var(--edge); color: var(--ink); min-height: 48px; font-size: 15px; }
+.btn.quiet:hover { background: var(--surface); }
 .btn.wide    { width: 100%; }
-.btn.huge    { min-height: 88px; font-size: 19px; border-radius: 18px; }
-:focus-visible { outline: 2px solid var(--dawn); outline-offset: 3px; border-radius: 6px; }
+.btn.huge    { min-height: 88px; font-size: 20px; letter-spacing: -.005em; }
+.btn.danger  { border-color: color-mix(in srgb, var(--bad) 70%, transparent); color: var(--bad); }
+:focus-visible { outline: 2px solid var(--dawn); outline-offset: 3px; }
+.btn:focus-visible, .iconbtn:focus-visible, .pill:focus-visible { border-radius: 999px; }
 
 .row { display: flex; gap: 10px; }
 .row > * { flex: 1; min-width: 0; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .spacer { flex: 1; min-height: 8px; }
 
-/* --- surfaces: spent by role, not stamped on everything ------------------ */
-.panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  padding: 18px;
+/* --- surfaces: spent by role, a tone step, never a frame on everything ---- */
+.panel { background: var(--surface); border-radius: var(--r); padding: 20px; }
+.panel.warm { background: var(--dawn-soft); }
+.list { background: var(--surface); border-radius: var(--r); }
+.list > * + * { border-top: 1px solid var(--line); }
+.item { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; }
+.item > svg { margin-top: 2px; color: var(--dim); }
+.item .grow { flex: 1; min-width: 0; }
+
+/* --- setup: the sensor check ------------------------------------------- */
+.sense { display: grid; grid-template-columns: 22px 1fr auto; gap: 4px 14px; align-items: center; padding: 16px 18px; }
+.sense > svg { color: var(--dim); }
+.sense .why { grid-column: 2 / -1; font-size: 14px; color: var(--dim); line-height: 1.45; }
+.state { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 500; color: var(--dim); white-space: nowrap; }
+.state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: .9; }
+.state.ok { color: var(--good); }
+.state.off { color: var(--bad); }
+.state.idle::before { background: none; box-shadow: inset 0 0 0 1.5px currentColor; }
+
+/* --- home: the bedtime block -------------------------------------------- */
+.lastnight { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; text-align: left; padding: 14px 16px 14px 18px; border-radius: var(--r); background: var(--surface); }
+.lastnight .big { font-family: var(--display); font-size: 34px; line-height: 1; color: var(--dawn); letter-spacing: -.02em; }
+.lastnight .meta { font-size: 14px; color: var(--dim); }
+.lastnight .go { display: inline-flex; align-items: center; gap: 4px; font-size: 15px; font-weight: 500; color: var(--ink); }
+.wake { display: flex; flex-direction: column; gap: 6px; }
+.wake input[type="time"] {
+  width: 100%; min-width: 0; appearance: none; -webkit-appearance: none;
+  background: var(--surface); border: 1px solid transparent; color: var(--ink-strong);
+  font-family: var(--display); font-weight: 300; font-size: 64px; line-height: 1.1; letter-spacing: -.03em;
+  padding: 10px 16px; border-radius: var(--r); text-align: center; font-variant-numeric: tabular-nums;
+  min-height: 104px; display: block;
 }
-.hair { height: 1px; background: var(--line); border: 0; margin: 0; }
+.wake input[type="time"]::-webkit-date-and-time-value { text-align: center; }
+.wake input[type="time"]::-webkit-calendar-picker-indicator { width: 22px; height: 22px; padding: 0; margin-left: 8px; filter: invert(.6) sepia(1); opacity: .5; }
+.wake input[type="time"]:hover { border-color: var(--edge); }
+.seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 4px; background: var(--surface); border-radius: 999px; }
+.seg button { min-height: 48px; border-radius: 999px; font-size: 15px; font-weight: 500; color: var(--dim); }
+.seg button[aria-checked="true"] { background: var(--surface-2); color: var(--ink-strong); box-shadow: inset 0 0 0 1px var(--edge); }
+.seg-note { font-size: 14px; color: var(--dim); }
+.safety { display: flex; flex-direction: column; gap: 2px; }
+.safety p { display: flex; gap: 10px; align-items: flex-start; font-size: 14.5px; line-height: 1.45; color: var(--ink); padding: 6px 0; }
+.safety svg { margin-top: 2px; color: var(--dawn); }
+.safety .must { color: var(--ink-strong); }
+.checklist { margin: 0; padding: 0 0 0 20px; font-size: 15px; line-height: 1.55; color: var(--ink); display: grid; gap: 8px; }
+.checklist li::marker { color: var(--dim); }
+.linkish { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 2px; font-size: 15px; font-weight: 500; color: var(--ink); text-decoration: underline; text-decoration-color: var(--edge); text-underline-offset: 4px; }
 
 /* --- the score ----------------------------------------------------------- */
-.score-wrap { display: flex; align-items: baseline; gap: 14px; }
+.score-wrap { display: flex; align-items: flex-end; gap: 16px; }
 .score {
   font-family: var(--display);
-  font-variation-settings: "opsz" 144, "SOFT" 0, "WONK" 1;
   font-weight: 300;
-  font-size: clamp(96px, 34vw, 148px);
-  line-height: .82;
-  letter-spacing: -.03em;
+  font-size: clamp(128px, 46vw, 196px);
+  line-height: .78;
+  letter-spacing: -.045em;
   color: var(--dawn);
   font-variant-numeric: tabular-nums;
+  display: inline-block;
+  transform-origin: 0 100%;
 }
-.score-of { font-family: var(--mono); font-size: 14px; color: var(--dim); }
-.verdict { font-family: var(--display); font-size: 24px; font-variation-settings: "opsz" 36; color: var(--ink-strong); }
+.score-of { font-size: 15px; line-height: 1.35; color: var(--dim); padding-bottom: 6px; }
+.score-of b { display: block; font-weight: 500; color: var(--ink); }
+.verdict { font-family: var(--display); font-size: 28px; line-height: 1.1; letter-spacing: -.015em; color: var(--ink-strong); }
+.cost { display: flex; gap: 12px; align-items: flex-start; padding: 18px 18px 18px 16px; border-radius: var(--r); background: var(--dawn-soft); }
+.cost > svg { color: var(--dawn); margin-top: 2px; }
+.cost h2 { font-size: 21px; }
+.cost .pts { color: var(--dawn); white-space: nowrap; }
+.confpill { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; color: var(--dim); }
+.confpill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.confpill.ok { color: var(--good); } .confpill.warn { color: var(--warn); } .confpill.off { color: var(--bad); }
 
 /* component bars */
-.comp { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: baseline; }
-.comp + .comp { margin-top: 14px; }
-.comp-name { font-size: 14px; color: var(--ink); }
-.comp-val  { font-family: var(--mono); font-size: 13px; color: var(--dim); font-variant-numeric: tabular-nums; }
-.comp-track { grid-column: 1 / -1; display: block; height: 7px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
-.comp-fill  { display: block; height: 100%; border-radius: 4px; background: var(--dawn); }
+.comp { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: baseline; }
+.comp + .comp { margin-top: 18px; }
+.comp-name { font-size: 15px; color: var(--ink); }
+.comp-val  { font-size: 14px; color: var(--dim); font-variant-numeric: tabular-nums; text-align: right; }
+.comp-track { grid-column: 1 / -1; display: block; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.comp-fill  { display: block; height: 100%; border-radius: 3px; background: var(--dawn); transform-origin: 0 50%; }
 .comp-fill.low { background: var(--bad); }
 .comp-fill.mid { background: var(--warn); }
 .comp-fill.high{ background: var(--good); }
 
 /* --- hypnogram ----------------------------------------------------------- */
-.hypno { width: 100%; display: block; border-radius: 10px; background: var(--surface); }
-.hypno-legend { display: flex; gap: 14px; flex-wrap: wrap; font-family: var(--mono); font-size: 11px; color: var(--dim); }
-.hypno-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: baseline; }
+.hypno { width: 100%; display: block; border-radius: 12px; background: var(--surface); }
+.hypno-legend { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 13px; color: var(--dim); }
+.hypno-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+.hypno-legend .total { margin-left: auto; color: var(--ink); }
+
+/* rested */
+.rested { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.rested .btn { min-height: 60px; padding: 10px 4px; font-size: 15px; border-radius: 14px; }
+.rested .btn:not(.primary) { background: var(--surface-2); }
+
+/* --- history ------------------------------------------------------------- */
+.chart { position: relative; display: flex; gap: 5px; align-items: flex-end; padding-top: 22px; }
+.chart .col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.chart .bw { height: 100px; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
+.chart .b { width: 100%; max-width: 22px; border-radius: 4px 4px 2px 2px; }
+.chart .d { font-size: 11px; height: 11px; color: var(--dim); line-height: 1; }
+.chart .avg { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--edge); pointer-events: none; }
+.chart .avg span { position: absolute; right: 0; top: -20px; font-size: 12px; color: var(--dim); background: var(--surface); padding: 0 0 0 6px; }
+.key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--dim); margin-top: 14px; }
+.key i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+.night-row { display: grid; grid-template-columns: 1fr auto 18px; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 14px 14px 14px 18px; min-height: 68px; }
+.night-row:hover { background: color-mix(in srgb, var(--surface) 70%, var(--surface-2)); }
+.night-row:first-child { border-radius: var(--r) var(--r) 0 0; }
+.night-row:last-child { border-radius: 0 0 var(--r) var(--r); }
+.night-row .day { font-size: 16px; font-weight: 500; color: var(--ink-strong); }
+.night-row .sub { font-size: 14px; color: var(--dim); }
+.night-row .s { font-family: var(--display); font-size: 32px; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.night-row > svg { color: var(--dim); }
 
 /* --- tracking screen: the darkest thing we can draw ---------------------- */
-#s-tracking { background: var(--bg-deep); color: #2A3040; }
-body.tracking { background: var(--bg-deep); }
-.night-mark {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: #1E2432; margin: 0 auto;
-  animation: breathe 5.5s ease-in-out infinite;
-}
-@keyframes breathe { 0%,100% { opacity:.28; transform:scale(1);} 50% { opacity:.85; transform:scale(1.6);} }
-.night-clock { font-family: var(--mono); font-size: 15px; color: #333B4D; text-align: center; font-variant-numeric: tabular-nums; }
-#s-tracking .btn { background: none; border-color: #1A2030; color: #3A4356; }
+body.tracking, body.tracking #app { background: var(--bg-deep); }
+#s-tracking { background: var(--bg-deep); color: var(--night-ink); text-align: center; justify-content: center; gap: 0; }
+#s-tracking .night-top { padding-top: 22vh; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.night-mark { width: 6px; height: 6px; border-radius: 50%; background: var(--night-low); opacity: .5; }
+.night-clock { font-family: var(--display); font-weight: 300; font-size: 30px; line-height: 1.1; color: var(--night-low); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.night-line { font-size: 15px; color: var(--night-ink); line-height: 1.5; }
+.night-small { font-size: 13px; color: var(--night-ink); }
+#s-tracking .btn { background: none; border: 1px solid var(--night-low); color: var(--night-ink); min-height: 64px; font-weight: 500; }
+
+/* --- alarm: hold to get up ---------------------------------------------- */
+.alarm-time { font-family: var(--display); font-weight: 300; font-size: 88px; line-height: .9; letter-spacing: -.04em; color: var(--dawn); }
+.hold { position: relative; overflow: hidden; isolation: isolate; min-height: 112px !important; font-size: 21px !important; }
+.hold .fill { position: absolute; inset: 0; background: var(--ink-strong); opacity: .28; transform: scaleX(0); transform-origin: 0 50%; z-index: -1; }
+.hold.holding .fill { transform: scaleX(1); }
+.hold-hint { font-size: 14px; color: var(--dim); text-align: center; min-height: 21px; }
+#holdLabel { display: inline-flex; align-items: center; gap: 10px; }
 
 /* --- misc ---------------------------------------------------------------- */
 .pill {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 10px; border-radius: 999px;
-  font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
-  background: var(--surface-2); color: var(--dim); border: 1px solid var(--line);
+  min-height: 36px; padding: 6px 14px; border-radius: 999px;
+  font-size: 14px; font-weight: 500;
+  background: var(--surface-2); color: var(--ink);
 }
-.pill.ok   { color: var(--good); border-color: color-mix(in srgb, var(--good) 35%, transparent); }
-.pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
-.pill.off  { color: var(--bad);  border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
-.caveat { font-size: 12.5px; color: var(--dim); line-height: 1.45; max-width: 52ch; }
+.note { display: flex; gap: 12px; align-items: flex-start; }
+.note > svg { color: var(--dawn); margin-top: 2px; }
+.install dl { margin: 0; display: grid; gap: 12px; }
+.install dt { font-size: 14px; font-weight: 600; color: var(--ink-strong); }
+.install dd { margin: 2px 0 0; font-size: 14.5px; color: var(--ink); line-height: 1.5; }
+.install .k { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; white-space: nowrap; }
+.install .k svg { color: var(--dim); vertical-align: -3px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .scroll-x { overflow-x: auto; }
+hr.hair { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+/* ============================================================================
+   MOTION — all of it is here, and only for people who have not asked for less.
+   Spring curves are CSS linear() (see --spring / --settle); transform and
+   opacity only. One hero moment: the score reveal. Nothing moves on the
+   tracking screen except a very slow, very dim breathing dot.
+   ========================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+  .btn, .iconbtn, .seg button, .night-row, .lastnight { transition: transform .5s var(--settle), background-color .2s ease, color .2s ease; }
+  .btn:active, .lastnight:active, .night-row:active { transform: scale(.97); transition-duration: .08s; }
+  .seg button:active { transform: scale(.94); transition-duration: .08s; }
+  #s-tracking .btn, #s-tracking .btn:active { transition: none; transform: none; }
+
+  .night-mark { animation: still-listening 12s ease-in-out infinite; }
+  @keyframes still-listening { 0%, 100% { opacity: .18; } 50% { opacity: .55; } }
+
+  .hold .fill { transition: transform .35s var(--settle); }
+  .hold.holding .fill { transition: transform 2s linear; }
+
+  .reveal .score { animation: score-in 1.1s var(--spring) .12s both; }
+  .reveal .score-of, .reveal .verdict-block { animation: lift-in .9s var(--settle) .55s both; }
+  .reveal .cost { animation: lift-in .9s var(--settle) .75s both; }
+  .reveal .comp-fill { animation: bar-in 1s var(--spring) both; animation-delay: calc(.95s + var(--i, 0) * 70ms); }
+  @keyframes score-in { from { opacity: 0; transform: translateY(18px) scale(.86); } to { opacity: 1; transform: none; } }
+  @keyframes lift-in  { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes bar-in   { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+  .screen.enter { animation: screen-in .45s var(--settle) both; }
+  @keyframes screen-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+}
 </style>
 </head>
 <body>
@@ -1292,7 +1447,7 @@ function drawHypnogram(canvas, night) {
   const padL = 4, padR = 4, padT = 20, padB = 22;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   if (!n) {
-    g.fillStyle = tok('--dim'); g.font = '12px ui-monospace, monospace'; g.textAlign = 'center';
+    g.fillStyle = tok('--dim'); g.font = '13px "IBM Plex Sans", sans-serif'; g.textAlign = 'center';
     g.fillText('no readable signal', W / 2, H / 2);
     return;
   }
@@ -1304,7 +1459,7 @@ function drawHypnogram(canvas, night) {
 
   /* the band guides, at the thresholds the stages actually use */
   g.strokeStyle = tok('--line'); g.lineWidth = 1;
-  g.font = '9px ui-monospace, monospace'; g.textAlign = 'left';
+  g.font = '11px "IBM Plex Sans", sans-serif'; g.textAlign = 'left';
   [[0.62, 'settled']].forEach(([d, label]) => {
     g.beginPath(); g.moveTo(padL, y(d) + .5); g.lineTo(W - padR, y(d) + .5); g.stroke();
     g.fillStyle = tok('--dim'); g.fillText(label, padL + 3, y(d) - 3);
@@ -1331,7 +1486,7 @@ function drawHypnogram(canvas, night) {
   /* hour ticks */
   /* a saved night stores bedAt/wakeAt; a just-finished one has startAt/endAt */
   const start = night.startAt != null ? night.startAt : night.bedAt, end = night.endAt != null ? night.endAt : night.wakeAt;
-  g.fillStyle = tok('--dim'); g.font = '10px ui-monospace, monospace'; g.textAlign = 'center';
+  g.fillStyle = tok('--dim'); g.font = '11px "IBM Plex Sans", sans-serif'; g.textAlign = 'center';
   const hours = Math.max(1, Math.round((end - start) / 3600000));
   const step = hours > 9 ? 2 : 1;
   for (let h = 0; h <= hours; h += step) {
@@ -1488,37 +1643,83 @@ const el = id => document.getElementById(id);
 
 function bandColor(v) { return v >= .8 ? 'high' : v >= .55 ? '' : v >= .35 ? 'mid' : 'low'; }
 
+/* Icons: one drawn set, 1.6 stroke on a 24 grid, inherit currentColor. */
+const ICON_PATHS = {
+  moon:    '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/>',
+  nights:  '<path d="M4 20V10M9.3 20V6M14.7 20v-8M20 20V8"/>',
+  data:    '<ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6M5 12v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-6"/>',
+  chevron: '<path d="m9.5 6 6 6-6 6"/>',
+  back:    '<path d="M14.5 6l-6 6 6 6"/>',
+  bell:    '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15L6 16.5ZM10 20.5a2.2 2.2 0 0 0 4 0"/>',
+  lock:    '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>',
+  sun:     '<circle cx="12" cy="12" r="3.6"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/>',
+  motion:  '<rect x="7.5" y="3" width="9" height="18" rx="2.2"/><path d="M3.5 9v6M20.5 9v6"/>',
+  sound:   '<path d="M4 10v4M8 7v10M12 4.5v15M16 8v8M20 10.5v3"/>',
+  screen:  '<rect x="6.5" y="3" width="11" height="18" rx="2.2"/><path d="M10.5 18h3"/>',
+  plug:    '<path d="M9 3v4.5M15 3v4.5M6.5 7.5h11V11a5.5 5.5 0 0 1-11 0V7.5ZM12 16.5V21"/>',
+  speaker: '<path d="M4.5 9.5h3l4.5-4v13l-4.5-4h-3z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.7 7.7 0 0 1 0 11"/>',
+  mattress:'<rect x="3" y="11" width="18" height="6" rx="2"/><path d="M5 17v2.5M19 17v2.5M8.5 11V8.5h4V11"/>',
+  alert:   '<path d="M12 4 21 19.5H3L12 4Z"/><path d="M12 10v4.2M12 17v.01"/>',
+  download:'<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/>',
+  upload:  '<path d="M12 15.5v-11M7.5 9 12 4.5 16.5 9M5 19.5h14"/>',
+  trash:   '<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/>',
+  share:   '<path d="M12 14.5V3.5M8.3 7.2 12 3.5l3.7 3.7"/><path d="M8 10.5H6.5v9.5h11v-9.5H16"/>',
+  dots:    '<circle cx="12" cy="5.5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="12" cy="18.5" r="1.2" fill="currentColor"/>',
+  install: '<rect x="6.5" y="2.5" width="11" height="19" rx="2.2"/><path d="M12 7.5v7M9 11.5l3 3 3-3"/>',
+  refresh: '<path d="M19 12a7 7 0 1 1-2.1-5M19 4.5V8h-3.5"/>',
+};
+const icon = (name, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name] || ''}</svg>`;
+
+const dayLabel = ts => new Date(ts).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+const scoreTone = s => typeof s !== 'number' ? 'var(--dim)' : s >= 72 ? 'var(--good)' : s >= 58 ? 'var(--dawn)' : 'var(--bad)';
+
 App.render = function () {
   const s = this.screen;
   const app = el('app');
+  const fresh = s !== this._rendered;
+  this._rendered = s;
   app.innerHTML = this['view_' + s] ? this['view_' + s]() : '<p class="lede">…</p>';
+  /* the bedroom is dark: the browser chrome goes black with the tracking screen */
+  const tc = document.querySelector('meta[name="theme-color"]');
+  if (tc) tc.setAttribute('content', s === 'tracking' ? '#000000' : getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#100D0B');
+  const scr = app.querySelector('.screen');
+  if (scr && fresh && s !== 'tracking' && s !== 'alarm') scr.classList.add(s === 'morning' ? 'reveal' : 'enter');
   if (this['after_' + s]) this['after_' + s]();
 };
+
+/* A top bar: the mark on the left, or a way back. */
+App._bar = function (left, right = '') {
+  return `<div class="bar">${left}<div class="bar-actions">${right}</div></div>`;
+};
+App._mark = () => `<span class="mark">${icon('moon', 20)}Small Hours</span>`;
+App._backBtn = (id = 'btnBack', label = 'Tonight') => `<button class="iconbtn" id="${id}" style="padding-left:4px">${icon('back')}${esc(label)}</button>`;
 
 /* --- setup: the sensor check IS the onboarding --------------------------- */
 App.view_setup = function () {
   const r = this.settings.sensors;
-  const line = (name, res, note) => {
-    if (!res) return `<div class="comp"><span class="comp-name">${esc(name)}</span><span class="pill">not checked</span></div>`;
-    return `<div class="comp"><span class="comp-name">${esc(name)}</span>
-      <span class="pill ${res.ok ? 'ok' : 'off'}">${res.ok ? 'working' : 'unavailable'}</span>
-      ${res.ok ? (note ? `<span class="comp-val" style="grid-column:1/-1">${esc(note)}</span>` : '') : `<span class="comp-val" style="grid-column:1/-1">${esc(res.why || '')}</span>`}</div>`;
+  const line = (ic, name, res, note) => {
+    const state = !res ? '<span class="state idle">not checked</span>'
+      : `<span class="state ${res.ok ? 'ok' : 'off'}">${res.ok ? 'working' : 'unavailable'}</span>`;
+    const why = !res ? '' : res.ok ? (note ? `<span class="why">${esc(note)}</span>` : '') : `<span class="why">${esc(res.why || '')}</span>`;
+    return `<div class="sense">${icon(ic)}<span>${esc(name)}</span>${state}${why}</div>`;
   };
   return `<div class="screen on">
-    <div>
-      <p class="eyebrow">First, one check</p>
-      <h1>Let's see what your phone will let this page do.</h1>
+    ${this._bar(this._mark())}
+    <div class="stack" style="gap:14px">
+      <h1>First, one check.</h1>
+      <p class="lede">A web page can only reach your sensors if the browser says yes, so allow motion and microphone access when asked. It takes about five seconds and shows exactly what tonight will look like. Nothing is recorded during the check.</p>
     </div>
-    <p class="lede">A web page can only reach your sensors if the browser says yes, so allow motion and microphone access when asked. This takes about five seconds and tells us exactly what tonight will look like. Nothing is recorded during the check.</p>
-    <div class="panel stack" style="gap:16px">
-      ${line('Movement', r && r.motion, r && r.motion && r.motion.ok ? `about ${r.motion.rate} readings a second` : '')}
-      ${line('Sound', r && r.audio, 'levels only — audio is never saved')}
-      ${line('Screen stays awake', r && r.wake)}
+    <div class="list">
+      ${line('motion', 'Movement', r && r.motion, r && r.motion && r.motion.ok ? `about ${r.motion.rate} readings a second` : '')}
+      ${line('sound', 'Sound', r && r.audio, 'levels only — audio is never saved')}
+      ${line('screen', 'Screen stays awake', r && r.wake)}
     </div>
     ${r ? this._setupVerdict(r) : ''}
     <div class="spacer"></div>
-    <button class="btn primary wide huge" id="btnProbe">${r ? 'Check again' : 'Run the check'}</button>
-    ${r ? `<button class="btn quiet wide" id="btnSetupDone">Continue</button>` : ''}
+    <div class="stack">
+      <button class="btn ${r ? 'quiet' : 'primary huge'} wide" id="btnProbe">${r ? `${icon('refresh')}Check again` : 'Run the check'}</button>
+      ${r ? `<button class="btn primary wide huge" id="btnSetupDone">Continue</button>` : ''}
+    </div>
     <p class="caveat">Movement is the one that matters most. If it is unavailable, the app still works — it scores your night from your times instead, and shows how you felt next to it.</p>
   </div>`;
 };
@@ -1534,11 +1735,12 @@ App._setupVerdict = function (r) {
     extra = `<p class="caveat" style="margin-top:12px">Without movement Small Hours runs as a <strong>sleep log and alarm</strong>: tap when you go to bed, tap when you wake, answer one question. It scores the night on length, on how steady your hours are, and shows how rested you felt next to it. That is a real score — just a simpler one, capped and labelled as an estimate.</p>
     <p class="caveat" style="margin-top:10px">On an iPhone that said no by mistake: reload the page and tap "Check again" — Safari asks again on a new visit. If it stops asking, clear this site under Settings → Apps → Safari → Advanced → Website Data.</p>`;
   }
-  return `<div class="panel" style="border-color:var(--dawn-soft)"><h3 style="margin-bottom:6px">${esc(head)}</h3><p class="caveat">${esc(body)}</p>${extra}</div>`;
+  return `<div class="panel ${m ? '' : 'warm'}"><h2 style="margin-bottom:8px">${esc(head)}</h2><p class="caveat">${esc(body)}</p>${extra}</div>`;
 };
 App.after_setup = function () {
   el('btnProbe').onclick = async () => {
     el('btnProbe').textContent = 'Checking…';
+    el('btnProbe').disabled = true;
     const motion = await Signal.probeMotion();
     const audio  = await Signal.probeAudio();
     const wake   = await Signal.probeWakeLock();
@@ -1559,64 +1761,67 @@ App.view_home = function () {
   const sens = this.settings.sensors || {};
   const motionOK = !!(sens.motion && sens.motion.ok);
   const wakeOK = !!(sens.wake && sens.wake.ok);
+  const win = motionOK ? +this.settings.windowMin || 0 : 0;
+  const alarmAt = `${pad2(h)}:${pad2(m)}`;
+  const fromMin = (h * 60 + m - win + 1440) % 1440;
+  const from = `${pad2(Math.floor(fromMin / 60))}:${pad2(fromMin % 60)}`;
+  const n = this.history.length;
 
   return `<div class="screen on">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">
-      <p class="eyebrow">Small Hours</p>
-      ${this.history.length ? `<button class="pill" id="btnHistory">${this.history.length} night${this.history.length > 1 ? 's' : ''} →</button>` : ''}
+    ${this._bar(this._mark(), `
+      ${n ? `<button class="iconbtn" id="btnHistory" aria-label="All nights, ${n} saved">${icon('nights')}<span class="num">${n}</span></button>` : ''}
+      <button class="iconbtn" id="btnData" aria-label="Your data, settings and install">${icon('data')}</button>`)}
+
+    ${last ? `<button class="lastnight" id="btnLast">
+        <span style="display:flex;align-items:center;gap:14px;min-width:0">
+          <span class="big num" style="color:${scoreTone(last.score)}">${last.score != null ? last.score : '—'}</span>
+          <span style="display:flex;flex-direction:column;min-width:0"><span style="font-weight:500;color:var(--ink-strong)">Last night</span>
+          <span class="meta">${last.score != null ? `${esc(durShort(last.asleepMs || 0))} asleep` : 'unreadable'}</span></span>
+        </span>
+        <span class="go">See it${icon('chevron', 18)}</span>
+      </button>` : `<h1>Put the phone on the mattress. That is the whole setup.</h1>`}
+
+    <div class="wake">
+      <label class="label" for="alarmTime">Wake me by</label>
+      <input type="time" id="alarmTime" value="${esc(this.settings.alarmTime)}">
     </div>
 
-    ${last ? `<div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:16px">
-      <div><p class="eyebrow" style="margin-bottom:4px">Last night</p>
-      <p style="font-size:15px">${last.score != null ? `<strong style="font-family:var(--display);font-size:22px;color:var(--dawn)">${last.score}</strong> · ${esc(durShort(last.asleepMs || 0))}` : 'unreadable'}</p></div>
-      <button class="btn quiet" id="btnLast" style="flex:0 0 auto">See it</button>
-    </div>` : `<div><h1>Put the phone on the mattress. That is the whole setup.</h1></div>`}
-
-    <div class="panel stack" style="gap:18px">
-      <div>
-        <label class="eyebrow" for="alarmTime">Wake me by</label>
-        <input type="time" id="alarmTime" value="${esc(this.settings.alarmTime)}"
-          style="width:100%;margin-top:8px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-strong);font-family:var(--mono);font-size:30px;padding:12px 14px;border-radius:12px;text-align:center">
+    ${motionOK ? `<div class="stack" style="gap:8px">
+      <div class="seg" role="radiogroup" aria-label="Wake window" id="win">
+        ${[[0, 'On time'], [20, '20 min'], [30, '30 min'], [45, '45 min']].map(([v, l]) =>
+          `<button role="radio" aria-checked="${win === v}" data-w="${v}">${l}</button>`).join('')}
       </div>
-      <div${motionOK ? '' : ' hidden'}>
-        <label class="eyebrow" for="win">Wake window</label>
-        <select id="win" style="width:100%;margin-top:8px;background:var(--surface-2);border:1px solid var(--line);color:var(--ink-strong);font-family:var(--body);font-size:16px;padding:14px;border-radius:12px">
-          <option value="30"${this.settings.windowMin == 30 ? ' selected' : ''}>30 min before — wake me at a light moment</option>
-          <option value="20"${this.settings.windowMin == 20 ? ' selected' : ''}>20 min before</option>
-          <option value="45"${this.settings.windowMin == 45 ? ' selected' : ''}>45 min before</option>
-          <option value="0"${this.settings.windowMin == 0 ? ' selected' : ''}>Exactly on time — no smart wake</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="panel stack" style="gap:12px">
-      <p class="eyebrow">Before you put it down</p>
-      <ol style="margin:0;padding-left:20px;font-size:14.5px;line-height:1.6;color:var(--ink)">
-        <li>Plug the phone in.</li>
-        <li><strong>Ringer on, volume up.</strong> A web page cannot turn either one up for you — that is why the test button below exists.</li>
-        <li><strong>Settings → Display &amp; Brightness → Auto-Lock → Never.</strong> ${wakeOK ? 'Belt and braces.' : 'This one is required: this browser will not hold the screen awake for the page, and if the phone locks, the page stops and the alarm stops existing.'}</li>
-        <li>Set your phone's normal alarm for <strong class="num">${backstop}</strong> as a backstop. This is a web page. Treat it as the nice alarm, never the only one.</li>
-        ${motionOK ? '<li>Phone flat on the mattress, screen down, near your hip. Not on the nightstand — it has to feel you move.</li>' : '<li>Leave this page open and the phone face down. Anywhere is fine tonight; nothing is being sensed.</li>'}
-      </ol>
-      <button class="btn quiet" id="btnTest">Test the alarm sound</button>
-    </div>
-
-    ${!motionOK ? `<div class="panel" style="border-color:var(--dawn-soft)">
-      <p class="eyebrow" style="margin-bottom:6px">Running as a sleep log</p>
-      <p class="caveat">Movement is not available on this device or was not allowed, so tonight is scored on length and steadiness — not on a hypnogram — with how rested you feel shown next to it. The alarm rings at the time you set.</p>
-      <p class="caveat" style="margin-top:8px"><button class="pill" id="btnRecheck">Re-check sensors</button></p>
+      <p class="seg-note">${win > 0 ? `Rings at a light moment between <strong class="num">${from}</strong> and <strong class="num">${alarmAt}</strong>.` : `Rings at exactly <strong class="num">${alarmAt}</strong>.`}</p>
     </div>` : ''}
 
+    <div class="safety">
+      ${!wakeOK ? `<p class="must">${icon('lock', 18)}<span><strong>Set Auto-Lock to Never tonight.</strong> This browser will not keep the screen awake, and if the phone locks, the page stops and so does the alarm. Settings → Display &amp; Brightness → Auto-Lock.</span></p>` : ''}
+      <p>${icon('bell', 18)}<span>Keep a backup alarm on your phone's own clock for <strong class="num">${backstop}</strong>. Treat this one as the nice alarm, never the only one.</span></p>
+      ${!motionOK ? `<p>${icon('alert', 18)}<span>No movement on this device, so tonight is a sleep log: scored on your times, with how rested you feel next to it. <button class="linkish" id="btnRecheck" style="min-height:0;padding:0">Check sensors again</button></span></p>` : ''}
+    </div>
+
     <div class="spacer"></div>
-    <button class="btn primary wide huge" id="btnStart">Start the night</button>
-    <p style="text-align:center"><button class="pill" id="btnData">Your data · export / import</button></p>
-    ${b.nights >= 3 ? `<p class="caveat" style="text-align:center">Your usual middle-of-night is ${pad2(Math.floor(b.midMinutes / 60))}:${pad2(b.midMinutes % 60)} across ${b.nights} nights.</p>` : `<p class="caveat" style="text-align:center">After three nights this starts scoring how steady your hours are.</p>`}
+    <button class="btn primary wide huge" id="btnStart">${icon('moon', 22)}Start the night</button>
+
+    <div class="stack" style="gap:14px;margin-top:12px">
+      <h2>Before you put it down</h2>
+      <ol class="checklist">
+        <li>Plug the phone in.</li>
+        <li><strong>Ringer on, volume up.</strong> A web page cannot turn either one up for you — that is what the test below is for.</li>
+        ${wakeOK ? '<li>Auto-Lock to Never is belt and braces: Settings → Display &amp; Brightness → Auto-Lock.</li>' : ''}
+        ${motionOK ? '<li>Phone flat on the mattress, screen down, near your hip. Not on the nightstand — it has to feel you move.</li>' : '<li>Leave this page open and the phone face down. Anywhere is fine tonight; nothing is being sensed.</li>'}
+      </ol>
+      <button class="btn quiet wide" id="btnTest">${icon('speaker')}Test the alarm sound</button>
+      <p class="caveat">${b.nights >= 3 ? `Your usual middle of the night is <span class="num">${pad2(Math.floor(b.midMinutes / 60))}:${pad2(b.midMinutes % 60)}</span>, across ${b.nights} nights.` : 'After three nights this starts scoring how steady your hours are.'}</p>
+    </div>
   </div>`;
 };
 App.after_home = function () {
-  el('alarmTime').onchange = async e => { this.settings.alarmTime = e.target.value; await this.save(); this.render(); };
+  el('alarmTime').onchange = async e => { if (!e.target.value) return; this.settings.alarmTime = e.target.value; await this.save(); this.render(); };
   const w = el('win');
-  if (w) w.onchange = async e => { this.settings.windowMin = +e.target.value; await this.save(); };
+  if (w) w.querySelectorAll('[data-w]').forEach(btn => {
+    btn.onclick = async () => { this.settings.windowMin = +btn.dataset.w; await this.save(); this.render(); };
+  });
   el('btnTest').onclick = async () => { await Alarm.unlock(); Alarm.test(); el('btnTest').textContent = 'Heard it? Then you are set.'; };
   el('btnStart').onclick = () => this.startNight();
   const hb = el('btnHistory'); if (hb) hb.onclick = () => this.go('history');
@@ -1629,9 +1834,9 @@ App.after_home = function () {
 App.view_resume = function () {
   const s = this.session;
   return `<div class="screen on">
-    <p class="eyebrow">Picking up where it stopped</p>
+    ${this._bar(this._mark())}
     <h1>A night was still running.</h1>
-    <p class="lede">It started at <span class="num">${hhmm(s.startAt)}</span>, ${dur(Date.now() - s.startAt)} ago. The page reloaded, so sensing stopped — but the epochs up to that point were saved.</p>
+    <p class="lede">It started at <span class="num">${hhmm(s.startAt)}</span>, ${dur(Date.now() - s.startAt)} ago. The page reloaded, so sensing stopped — but the readings up to that point were saved.</p>
     <div class="spacer"></div>
     <button class="btn primary wide huge" id="btnFinish">Finish it and score it</button>
     <button class="btn quiet wide" id="btnDiscard">Throw it away</button>
@@ -1649,16 +1854,16 @@ App.after_resume = function () {
 App.view_tracking = function () {
   const s = this.session;
   const t = new Date(s.target);
-  return `<div class="screen on" id="s-tracking" style="justify-content:center;text-align:center;gap:34px">
-    <div class="night-mark"></div>
-    <div>
+  return `<div class="screen on" id="s-tracking">
+    <div class="night-top">
+      <span class="night-mark" role="img" aria-label="Still listening"></span>
       <p class="night-clock" id="nightClock">${hhmm(s.startAt)} — 0h 00m</p>
-      <p class="night-clock" style="margin-top:6px">${s.windowMin > 0 ? `waking you by ${pad2(t.getHours())}:${pad2(t.getMinutes())}, from ${s.windowMin} min before` : `alarm at ${pad2(t.getHours())}:${pad2(t.getMinutes())}`}</p>
-      <p class="night-clock" style="margin-top:6px;font-size:11px">${s.windowMin > 0 ? 'reading the bed' : 'logging times'}</p>
+      <p class="night-line">${s.windowMin > 0 ? `Waking you by ${pad2(t.getHours())}:${pad2(t.getMinutes())}, from ${s.windowMin} min before` : `Alarm at ${pad2(t.getHours())}:${pad2(t.getMinutes())}`}</p>
+      <p class="night-small">${s.windowMin > 0 ? 'Reading the bed' : 'Logging times'}</p>
     </div>
     <div class="spacer"></div>
-    <button class="btn wide" id="btnEnd" style="min-height:64px">I'm awake — end the night</button>
-    <p class="night-clock" style="font-size:11px">Leave this open. Screen down.</p>
+    <button class="btn wide" id="btnEnd">I'm awake — end the night</button>
+    <p class="night-small" style="margin-top:14px">Leave this open. Screen down.</p>
   </div>`;
 };
 App.after_tracking = function () {
@@ -1670,31 +1875,42 @@ App.after_tracking = function () {
   };
 };
 
-/* --- alarm --------------------------------------------------------------- */
+/* --- alarm: hold two seconds to get up ----------------------------------- */
 App.view_alarm = function () {
-  return `<div class="screen on" style="justify-content:center;text-align:center;gap:28px">
-    <p class="eyebrow">${hhmm(Date.now())}</p>
-    <h1 style="font-size:38px">Good morning.</h1>
+  return `<div class="screen on" style="justify-content:center;text-align:center;gap:20px">
+    <div class="spacer"></div>
+    <p class="alarm-time num">${hhmm(Date.now())}</p>
+    <h1 style="font-size:36px">Good morning.</h1>
     <p class="lede" style="margin:0 auto">Hold the button for two seconds. That is on purpose.</p>
     <div class="spacer"></div>
-    <button class="btn primary wide huge" id="btnUp" style="min-height:104px">Hold to get up</button>
+    <button class="btn primary wide huge hold" id="btnUp" role="button" aria-describedby="holdHint"><span class="fill"></span><span id="holdLabel">${icon('sun', 24)}Hold to get up</span></button>
+    <p class="hold-hint" id="holdHint" aria-live="polite">&nbsp;</p>
     <button class="btn quiet wide" id="btnSnooze">Nine more minutes</button>
   </div>`;
 };
 App.after_alarm = function () {
-  const b = el('btnUp');
-  let timer = null, held = 0;
+  const b = el('btnUp'), label = el('holdLabel'), hint = el('holdHint');
+  let timer = null, tick = null, held = 0;
+  const reset = () => { b.classList.remove('holding'); label.innerHTML = `${icon('sun', 24)}Hold to get up`; };
   const startHold = e => {
     e.preventDefault();
     held = Date.now();
-    b.textContent = 'Keep holding…';
-    timer = setTimeout(() => { b.textContent = 'Up.'; this.endNight(); }, 2000);
+    b.classList.add('holding');
+    label.textContent = 'Keep holding…';
+    hint.textContent = '2';
+    clearInterval(tick);
+    tick = setInterval(() => { const left = Math.ceil((2000 - (Date.now() - held)) / 1000); if (left > 0) hint.textContent = String(left); }, 250);
+    timer = setTimeout(() => { clearInterval(tick); label.textContent = 'Up.'; hint.textContent = 'Good morning.'; this.endNight(); }, 2000);
   };
-  const endHold = () => { clearTimeout(timer); if (Date.now() - held < 2000) b.textContent = 'Hold to get up'; };
+  const endHold = () => {
+    clearTimeout(timer); clearInterval(tick);
+    if (Date.now() - held < 2000) { reset(); hint.textContent = held ? 'Not quite — hold for the full two seconds.' : '\u00a0'; }
+  };
   b.addEventListener('pointerdown', startHold);
   b.addEventListener('pointerup', endHold);
   b.addEventListener('pointercancel', endHold);
   b.addEventListener('pointerleave', endHold);
+  b.addEventListener('contextmenu', e => e.preventDefault());
   el('btnSnooze').onclick = () => {
     Alarm.silence();
     Alarm.target = Date.now() + 9 * 60000;
@@ -1710,10 +1926,11 @@ App.view_morning = function () {
   if (!n) return `<div class="screen on"><p class="lede">No night to show.</p><button class="btn wide" id="btnHome2">Back</button></div>`;
   const res = n._res || Scorer.compute(n, this.baseline);
   const b = this.baseline || { nights: 0 };
+  const when = `${esc(dayLabel(n.wakeAt))} · <span class="num">${esc(hhmm(n.bedAt))} → ${esc(hhmm(n.wakeAt))}</span>`;
 
   if (!n.ok || res.total == null) {
     return `<div class="screen on">
-      <p class="eyebrow">${esc(hhmm(n.bedAt))} → ${esc(hhmm(n.wakeAt))}</p>
+      ${this._bar(`<span class="label">${when}</span>`)}
       <h1>I couldn't read that night.</h1>
       <p class="lede">${esc(n.reason || 'The signal was not usable.')}</p>
       <div class="panel"><p class="caveat">No score is better than a made-up one. The times are saved — ${esc(dur(n.inBedMs))} in bed. Nothing to make up for; tonight just runs as normal.</p></div>
@@ -1723,63 +1940,63 @@ App.view_morning = function () {
   }
 
   const delta = b.avgScore != null && this.history.length > 1 ? res.total - b.avgScore : null;
-  const rowsHtml = res.rows.filter(r => !r.skipped).map(r => `
+  const rowsHtml = res.rows.filter(r => !r.skipped).map((r, i) => `
     <div class="comp">
       <span class="comp-name">${esc(r.name)}</span>
       <span class="comp-val">${esc(r.show ? r.show(n, b) : '')}</span>
-      <span class="comp-track"><span class="comp-fill ${bandColor(r.value)}" style="width:${Math.round(r.value * 100)}%"></span></span>
+      <span class="comp-track"><span class="comp-fill ${bandColor(r.value)}" style="width:${Math.round(r.value * 100)}%;--i:${i}"></span></span>
     </div>`).join('');
   const skipped = res.rows.filter(r => r.skipped);
+  const conf = res.confidence >= .85 ? 'ok' : res.confidence >= .6 ? 'warn' : 'off';
 
   return `<div class="screen on">
-    <div style="display:flex;justify-content:space-between;align-items:baseline">
-      <p class="eyebrow">${esc(hhmm(n.bedAt))} → ${esc(hhmm(n.wakeAt))}</p>
-      <span class="pill ${res.confidence >= .85 ? 'ok' : res.confidence >= .6 ? 'warn' : 'off'}">${esc(res.confLabel)}</span>
-    </div>
+    ${this._bar(`<span class="label">${when}</span>`, `<span class="confpill ${conf}">${esc(res.confLabel)}</span>`)}
 
     <div>
       <div class="score-wrap">
-        <span class="score">${res.total}</span>
-        <span class="score-of">out&nbsp;of&nbsp;100${delta != null ? `<br>${delta >= 0 ? '+' : ''}${delta} vs your average` : ''}</span>
+        <span class="score" aria-label="Score ${res.total} out of 100">${res.total}</span>
+        <span class="score-of">out of 100${delta != null ? `<b>${delta >= 0 ? '+' : '−'}${Math.abs(delta)} on your average</b>` : ''}</span>
       </div>
-      <p class="verdict" style="margin-top:14px">${esc(res.band[1])}</p>
-      <p class="lede" style="margin-top:4px">${esc(res.band[2])}</p>
+      <div class="verdict-block" style="margin-top:22px">
+        <p class="verdict">${esc(res.band[1])}</p>
+        <p class="lede" style="margin-top:6px">${esc(res.band[2])}</p>
+      </div>
     </div>
 
-    ${n.estimated || !(n.depth && n.depth.length) ? `<div class="panel"><p class="eyebrow" style="margin-bottom:6px">Sleep log</p><p class="caveat">No movement was read, so there is no night curve. This score comes from your times alone — ${esc(durShort(n.inBedMs))} in bed, sleep estimated — and is capped at 78.</p></div>` : `<div>
+    ${res.worst ? `<div class="cost">${icon('alert')}<div class="stack" style="gap:6px">
+      <h2>What cost you the most: ${esc(res.worst.name.toLowerCase())}, <span class="pts num">${Math.round(res.worst.lost)} points</span>.</h2>
+      <p class="caveat" style="color:var(--ink)">${esc(res.worst.lever)}</p>
+    </div></div>` : `<div class="cost">${icon('sun')}<p class="caveat" style="color:var(--ink)">Nothing stands out as the problem — the points are spread evenly. That is what a good night looks like.</p></div>`}
+
+    ${n.estimated || !(n.depth && n.depth.length) ? `<div class="panel"><h3 style="margin-bottom:6px">Sleep log</h3><p class="caveat">No movement was read, so there is no night curve. This score comes from your times alone — ${esc(durShort(n.inBedMs))} in bed, sleep estimated — and is capped at 78.</p></div>` : `<div class="stack" style="gap:10px">
+      <h3>The night</h3>
       <canvas class="hypno" id="hypno"></canvas>
-      <div class="hypno-legend" style="margin-top:8px">
+      <div class="hypno-legend">
         <span><i style="background:var(--dawn)"></i>awake</span>
         <span><i style="background:var(--deep);opacity:.45"></i>restless</span>
         <span><i style="background:var(--deep)"></i>settled</span>
-        <span style="margin-left:auto">${esc(durShort(n.asleepMs))} asleep of ${esc(durShort(n.inBedMs))}</span>
+        <span class="total">${esc(durShort(n.asleepMs))} asleep of ${esc(durShort(n.inBedMs))}</span>
       </div>
     </div>`}
 
-    ${res.worst ? `<div class="panel" style="border-color:var(--dawn-soft)">
-      <p class="eyebrow" style="margin-bottom:6px">What cost you the most</p>
-      <h3 style="margin-bottom:6px">${esc(res.worst.name)} — ${Math.round(res.worst.lost)} points</h3>
-      <p class="caveat">${esc(res.worst.lever)}</p>
-    </div>` : `<div class="panel"><p class="caveat">Nothing stands out as the problem — the points are spread evenly. That is what a good night looks like.</p></div>`}
-
-    <div class="panel">${rowsHtml}
-    ${skipped.length ? `<p class="caveat" style="margin-top:16px">Not scored yet: ${esc(skipped.map(r => r.name.toLowerCase()).join(', '))}. ${skipped.some(r => r.key === 'timing') ? 'Steadiness needs three nights before it means anything.' : ''}</p>` : ''}
+    <div class="panel"><h3 style="margin-bottom:16px">Where the points came from</h3>${rowsHtml}
+    ${skipped.length ? `<p class="caveat" style="margin-top:18px">Not scored yet: ${esc(skipped.map(r => r.name.toLowerCase()).join(', '))}. ${skipped.some(r => r.key === 'timing') ? 'Steadiness needs three nights before it means anything.' : ''}</p>` : ''}
     </div>
 
-    ${n.hadAudio && n.snoreMinutes >= 15 ? `<div class="panel"><p class="eyebrow" style="margin-bottom:6px">Sound</p><p class="caveat">Roughly ${n.snoreMinutes} minutes of steady low-frequency sound while you were asleep — that pattern is usually snoring. Worth knowing, not worth worrying about on its own.</p></div>` : ''}
+    ${n.hadAudio && n.snoreMinutes >= 15 ? `<div class="panel"><h3 style="margin-bottom:6px">Sound</h3><p class="caveat">Roughly ${n.snoreMinutes} minutes of steady low-frequency sound while you were asleep — that pattern is usually snoring. Worth knowing, not worth worrying about on its own.</p></div>` : ''}
 
-    <div class="panel">
-      <p class="eyebrow" style="margin-bottom:10px">How rested do you actually feel?</p>
-      <div class="row" id="restedRow">
+    <div class="stack" style="gap:12px">
+      <h2>How rested do you actually feel?</h2>
+      <div class="rested" id="restedRow" role="radiogroup" aria-label="How rested you feel">
         ${[['1', 'Wrecked'], ['2', 'Meh'], ['3', 'Fine'], ['4', 'Great']].map(([v, l]) =>
-          `<button class="btn ${n.rested == v ? 'primary' : ''}" data-r="${v}" style="flex-direction:column;gap:2px;min-height:66px;font-size:13px;padding:14px 4px">${l}</button>`).join('')}
+          `<button class="btn ${n.rested == v ? 'primary' : ''}" role="radio" aria-checked="${n.rested == v}" data-r="${v}">${l}</button>`).join('')}
       </div>
-      ${n.rested ? `<p class="caveat" style="margin-top:12px">${esc(this._restedNote(res.total, +n.rested))}</p>` : ''}
+      ${n.rested ? `<p class="caveat" role="status">${esc(this._restedNote(res.total, +n.rested))}</p>` : ''}
     </div>
 
     <p class="caveat">This is a phone on a mattress, not a sleep lab. It measures how still you were and how quiet the room was. It deliberately does not claim REM or deep sleep: movement alone cannot tell those apart, and apps that show them are drawing a textbook diagram, not your night. Read this for patterns across weeks, not for any single number.</p>
-    <div class="row" style="margin-top:4px">
-      <button class="btn quiet" id="btnHist2">All nights</button>
+    <div class="row">
+      <button class="btn quiet" id="btnHist2">${icon('nights', 18)}All nights</button>
       <button class="btn primary" id="btnHome2">Done</button>
     </div>
   </div>`;
@@ -1804,39 +2021,45 @@ App.after_morning = function () {
 App.view_history = function () {
   const hs = this.history.filter(n => n && n.wakeAt);
   const b = this.baseline || { nights: 0 };
-  if (!hs.length) return `<div class="screen on"><h1>No nights yet.</h1><p class="lede">The first one lands here tomorrow morning.</p><div class="spacer"></div><button class="btn primary wide" id="btnBack">Back</button></div>`;
+  if (!hs.length) return `<div class="screen on">${this._bar(this._backBtn())}<h1>No nights yet.</h1><p class="lede">The first one lands here tomorrow morning.</p><div class="spacer"></div><button class="btn primary wide" id="btnBack2">Back to tonight</button></div>`;
 
   const scored = hs.filter(n => typeof n.score === 'number');
-  const max = 100;
-  const bars = hs.slice(0, 14).reverse().map(n => {
-    const h = typeof n.score === 'number' ? Math.max(4, (n.score / max) * 100) : 4;
-    const c = typeof n.score === 'number' ? (n.score >= 72 ? 'var(--good)' : n.score >= 58 ? 'var(--dawn)' : 'var(--bad)') : 'var(--line)';
-    return `<span title="${esc(n.id || '')}" style="flex:1;min-width:6px;height:${h}%;background:${c};border-radius:2px 2px 0 0;align-self:flex-end"></span>`;
+  const recent = hs.slice(0, 14).reverse();
+  const cols = recent.map(n => {
+    const h = typeof n.score === 'number' ? Math.max(4, n.score) : 4;
+    const lbl = new Date(n.wakeAt).toLocaleDateString('en-GB', { weekday: 'narrow' });
+    return `<span class="col" title="${esc(dayLabel(n.wakeAt))}: ${typeof n.score === 'number' ? n.score : 'no score'}">
+      <span class="bw"><span class="b" style="height:${h}%;background:${typeof n.score === 'number' ? scoreTone(n.score) : 'var(--surface-2)'}"></span></span>
+      <span class="d">${esc(lbl)}</span></span>`;
   }).join('');
+  const avgLine = b.avgScore != null ? `<span class="avg" style="bottom:calc(19px + ${b.avgScore}px)"><span>avg ${b.avgScore}</span></span>` : '';
 
   return `<div class="screen on">
-    <p class="eyebrow">Small Hours</p>
-    <h1>${scored.length} scored night${scored.length === 1 ? '' : 's'}.</h1>
-    ${b.avgScore != null ? `<p class="lede">Your average is <strong style="color:var(--dawn)">${b.avgScore}</strong>, on ${esc(durShort(b.avgAsleepMs || 0))} of sleep a night.</p>` : ''}
-    <div class="panel">
-      <p class="eyebrow" style="margin-bottom:12px">Last ${Math.min(14, hs.length)} nights</p>
-      <div style="display:flex;gap:4px;height:88px;align-items:flex-end">${bars}</div>
+    ${this._bar(this._backBtn(), `<button class="iconbtn" id="btnData2" aria-label="Your data">${icon('data')}</button>`)}
+    <div class="stack" style="gap:10px">
+      <h1>${scored.length} scored night${scored.length === 1 ? '' : 's'}.</h1>
+      ${b.avgScore != null ? `<p class="lede">Your average is <strong style="color:var(--dawn)">${b.avgScore}</strong>, on ${esc(durShort(b.avgAsleepMs || 0))} of sleep a night.</p>` : ''}
     </div>
-    <div class="stack">
-      ${hs.map(n => `<button class="panel" data-day="${esc(n.id || '')}" style="display:flex;justify-content:space-between;align-items:center;gap:14px;text-align:left;width:100%">
-        <span>
-          <span style="font-family:var(--mono);font-size:12px;color:var(--dim)">${esc(n.id || dayKey(n.wakeAt))}</span><br>
-          <span style="font-size:14px">${esc(hhmm(n.bedAt))} → ${esc(hhmm(n.wakeAt))} · ${esc(durShort(n.asleepMs || 0))}</span>
+    <div class="panel">
+      <div class="chart" role="img" aria-label="Scores for the last ${recent.length} nights">${avgLine}${cols}</div>
+      <div class="key"><span><i style="background:var(--good)"></i>72 and up</span><span><i style="background:var(--dawn)"></i>58–71</span><span><i style="background:var(--bad)"></i>under 58</span></div>
+    </div>
+    <div class="list">
+      ${hs.map(n => `<button class="night-row" data-day="${esc(n.id || '')}">
+        <span style="display:flex;flex-direction:column;min-width:0">
+          <span class="day">${esc(dayLabel(n.wakeAt))}</span>
+          <span class="sub num">${esc(hhmm(n.bedAt))} → ${esc(hhmm(n.wakeAt))} · ${esc(durShort(n.asleepMs || 0))} asleep</span>
         </span>
-        <span style="font-family:var(--display);font-size:26px;color:${typeof n.score === 'number' ? 'var(--dawn)' : 'var(--dim)'};font-variant-numeric:tabular-nums">${typeof n.score === 'number' ? n.score : '—'}</span>
+        <span class="s" style="color:${scoreTone(n.score)}">${typeof n.score === 'number' ? n.score : '—'}</span>
+        ${icon('chevron', 18)}
       </button>`).join('')}
     </div>
-    <button class="btn quiet wide" id="btnData2">Export or import nights</button>
-    <button class="btn primary wide" id="btnBack" style="margin-top:4px">Back to tonight</button>
+    <button class="btn primary wide" id="btnBack2">Back to tonight</button>
   </div>`;
 };
 App.after_history = function () {
   el('btnBack').onclick = () => this.go('home');
+  const b2 = el('btnBack2'); if (b2) b2.onclick = () => this.go('home');
   const d2 = el('btnData2'); if (d2) d2.onclick = () => this.go('data');
   document.querySelectorAll('[data-day]').forEach(btn => {
     btn.onclick = () => {
@@ -1909,36 +2132,49 @@ const DataIO = {
 App.view_data = function () {
   const msg = this._dataMsg;
   return `<div class="screen on">
-    <div>
-      <p class="eyebrow">Your data</p>
-      <h1>Everything stays on this device.</h1>
+    ${this._bar(this._backBtn())}
+    <div class="stack" style="gap:14px">
+      <h1>Your data stays on this device.</h1>
+      <p class="lede">Nights are kept in this browser's storage and are never uploaded. To move them to another phone or browser, export a file here and import it there. Clearing this site's data in the browser deletes them — exporting now and then is the backup.</p>
     </div>
-    <p class="lede">Nights are kept in this browser's storage and are never uploaded. To move them to another phone or browser, export a file here and import it there. Clearing this site's data in the browser deletes them — exporting now and then is the backup.</p>
-    ${msg ? `<div class="panel" role="status" id="dataMsg" style="border-color:var(--dawn-soft)"><p class="caveat">${esc(msg)}</p></div>` : ''}
-    <div class="panel stack">
-      <h3>Export</h3>
-      <p class="caveat">A JSON file with every saved night: times, the score and its parts, the night curve and how rested you said you felt. No audio — none is ever kept.</p>
-      <button class="btn wide" id="btnExport">Export nights (${this.history.length ? 'JSON' : 'nothing saved yet'})</button>
+    ${msg ? `<div class="panel warm note" role="status" id="dataMsg">${icon('data')}<p style="color:var(--ink-strong)">${esc(msg)}</p></div>` : ''}
+    <div class="list">
+      <div class="item">${icon('download')}<div class="grow stack" style="gap:10px">
+        <h3>Export</h3>
+        <p class="caveat">A JSON file with every saved night: times, the score and its parts, the night curve and how rested you said you felt. No audio — none is ever kept.</p>
+        <button class="btn quiet wide" id="btnExport">Export nights (${this.history.length ? 'JSON' : 'nothing saved yet'})</button>
+      </div></div>
+      <div class="item">${icon('upload')}<div class="grow stack" style="gap:10px">
+        <h3>Import</h3>
+        <p class="caveat">Adds nights from a Small Hours export. A night already on this device is kept as it is.</p>
+        <label class="btn quiet wide" for="fileImport" style="cursor:pointer">Choose a file…</label>
+        <input type="file" id="fileImport" accept="application/json,.json" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+      </div></div>
     </div>
-    <div class="panel stack">
-      <h3>Import</h3>
-      <p class="caveat">Adds nights from a Small Hours export. A night already on this device is kept as it is.</p>
-      <label class="btn wide" for="fileImport" style="cursor:pointer">Choose a file…</label>
-      <input type="file" id="fileImport" accept="application/json,.json" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+
+    <div class="panel install stack" style="gap:14px">
+      <div class="note" style="align-items:center">${icon('install', 22)}<h2>Install on your phone</h2></div>
+      <p class="caveat">It opens full screen, works offline, and is easier to find at bedtime.</p>
+      <dl>
+        <div><dt>iPhone</dt><dd>In Safari: <span class="k">Share ${icon('share', 17)}</span> → <span class="k">Add to Home Screen</span></dd></div>
+        <div><dt>Android</dt><dd>In Chrome: <span class="k">${icon('dots', 17)} menu</span> → <span class="k">Install app</span></dd></div>
+      </dl>
     </div>
-    <div class="panel stack">
+
+    <div class="stack" style="gap:10px">
       <h3>Delete</h3>
       <p class="caveat">Removes every night and setting from this browser. Export first if you want to keep them.</p>
-      <button class="btn quiet wide" id="btnWipe">Delete everything</button>
+      <button class="btn quiet danger wide" id="btnWipe">${icon('trash', 18)}Delete everything</button>
     </div>
     <div class="spacer"></div>
-    <button class="btn primary wide" id="btnBack">Back to tonight</button>
+    <button class="btn primary wide" id="btnBack2">Back to tonight</button>
   </div>`;
 };
 App.after_data = function () {
   const say = m => { this._dataMsg = m; this.render(); };
   this._dataMsg = null;
   el('btnBack').onclick = () => this.go('home');
+  el('btnBack2').onclick = () => this.go('home');
   el('btnExport').onclick = async () => {
     const { blob, count } = await DataIO.exportBlob();
     const a = document.createElement('a');
@@ -1961,7 +2197,7 @@ App.after_data = function () {
   let armed = false;
   el('btnWipe').onclick = () => {
     const b = el('btnWipe');
-    if (!armed) { armed = true; b.textContent = 'Tap again to delete everything'; setTimeout(() => { armed = false; if (el('btnWipe')) el('btnWipe').textContent = 'Delete everything'; }, 4000); return; }
+    if (!armed) { armed = true; b.textContent = 'Tap again to delete everything'; setTimeout(() => { armed = false; if (el('btnWipe')) el('btnWipe').innerHTML = `${icon('trash', 18)}Delete everything`; }, 4000); return; }
     for (const k of Store.keys()) { try { localStorage.removeItem(k); } catch (_) {} }
     this.history = []; this.baseline = Scorer.baseline([]);
     this.settings = { alarmTime: '07:00', windowMin: 30, setupDone: false, sensors: null };
